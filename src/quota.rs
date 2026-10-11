@@ -72,6 +72,7 @@ pub struct QuotaResponse {
     pub description: Option<String>,
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Clone)]
 pub struct AntigravityQuota {
     pub process_id: u32,

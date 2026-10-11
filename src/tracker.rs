@@ -1,14 +1,13 @@
-use std::sync::atomic::{AtomicBool, AtomicIsize, Ordering};
+use std::sync::atomic::{AtomicIsize, Ordering};
 use windows::Win32::Foundation::{HWND, LPARAM, RECT};
-use windows::Win32::UI::Accessibility::{SetWinEventHook, UnhookWinEvent, HWINEVENTHOOK};
+use windows::Win32::System::Diagnostics::ToolHelp::{
+    CreateToolhelp32Snapshot, Process32FirstW, Process32NextW, PROCESSENTRY32W, TH32CS_SNAPPROCESS,
+};
 use windows::Win32::UI::WindowsAndMessaging::{
-    EnumWindows, GetWindowRect, GetWindowTextW, GetWindowThreadProcessId, IsIconic,
-    IsWindowVisible, EVENT_OBJECT_LOCATIONCHANGE, EVENT_SYSTEM_MOVESIZEEND,
-    EVENT_SYSTEM_MOVESIZESTART, WINEVENT_OUTOFCONTEXT,
+    EnumWindows, GetWindowRect, GetWindowThreadProcessId, IsIconic, IsWindowVisible,
 };
 
 static TARGET_HWND: AtomicIsize = AtomicIsize::new(0);
-static IS_DRAGGING: AtomicBool = AtomicBool::new(false);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct WindowBounds {
@@ -20,10 +19,35 @@ pub struct WindowBounds {
     pub height: i32,
 }
 
-pub struct WindowTracker {
-    hook_movesize_start: HWINEVENTHOOK,
-    hook_movesize_end: HWINEVENTHOOK,
-    hook_location_change: HWINEVENTHOOK,
+
+
+/// Antigravity.exe のプロセスID一覧を取得
+fn get_antigravity_pids() -> Vec<u32> {
+    let mut pids = Vec::new();
+    unsafe {
+        if let Ok(snapshot) = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0) {
+            let mut entry = std::mem::zeroed::<PROCESSENTRY32W>();
+            entry.dwSize = std::mem::size_of::<PROCESSENTRY32W>() as u32;
+
+            if Process32FirstW(snapshot, &mut entry).is_ok() {
+                loop {
+                    let name = String::from_utf16_lossy(&entry.szExeFile)
+                        .trim_matches('\0')
+                        .to_string();
+
+                    if name.eq_ignore_ascii_case("Antigravity.exe") {
+                        pids.push(entry.th32ProcessID);
+                    }
+
+                    if Process32NextW(snapshot, &mut entry).is_err() {
+                        break;
+                    }
+                }
+            }
+            let _ = windows::Win32::Foundation::CloseHandle(snapshot);
+        }
+    }
+    pids
 }
 
 unsafe extern "system" fn enum_windows_proc(hwnd: HWND, lparam: LPARAM) -> windows::core::BOOL {
@@ -40,21 +64,18 @@ unsafe extern "system" fn enum_windows_proc(hwnd: HWND, lparam: LPARAM) -> windo
         let width = rect.right - rect.left;
         let height = rect.bottom - rect.top;
 
-        if width < 400 || height < 300 {
+        // メインウィンドウとして妥当なサイズ
+        if width < 500 || height < 350 {
             return windows::core::BOOL(1);
         }
-
-        let mut title_buf = [0u16; 256];
-        let len = GetWindowTextW(hwnd, &mut title_buf);
-        let title = String::from_utf16_lossy(&title_buf[..len as usize]);
 
         let mut pid = 0;
         GetWindowThreadProcessId(hwnd, Some(&mut pid));
 
-        if title.contains("Antigravity") {
-            let found_ptr = lparam.0 as *mut HWND;
-            *found_ptr = hwnd;
-            return windows::core::BOOL(0);
+        let pids = &*(lparam.0 as *const (Vec<u32>, *mut HWND));
+        if pids.0.contains(&pid) {
+            *(pids.1) = hwnd;
+            return windows::core::BOOL(0); // 見つかったので探索終了
         }
 
         windows::core::BOOL(1)
@@ -62,11 +83,18 @@ unsafe extern "system" fn enum_windows_proc(hwnd: HWND, lparam: LPARAM) -> windo
 }
 
 pub fn find_antigravity_window() -> Option<HWND> {
+    let pids = get_antigravity_pids();
+    if pids.is_empty() {
+        return None;
+    }
+
     let mut found_hwnd = HWND::default();
+    let param = (pids, &mut found_hwnd as *mut HWND);
+
     unsafe {
         let _ = EnumWindows(
             Some(enum_windows_proc),
-            LPARAM(&mut found_hwnd as *mut HWND as isize),
+            LPARAM(&param as *const _ as isize),
         );
     }
 
@@ -103,94 +131,4 @@ pub fn get_target_bounds(hwnd: HWND) -> Option<WindowBounds> {
     None
 }
 
-pub fn is_dragging() -> bool {
-    IS_DRAGGING.load(Ordering::SeqCst)
-}
 
-unsafe extern "system" fn winevent_proc(
-    _hook: HWINEVENTHOOK,
-    event: u32,
-    hwnd: HWND,
-    _id_object: i32,
-    _id_child: i32,
-    _dw_event_thread: u32,
-    _dwms_event_time: u32,
-) {
-    let target = TARGET_HWND.load(Ordering::SeqCst);
-    if target == 0 || hwnd.0 as isize != target {
-        return;
-    }
-
-    match event {
-        EVENT_SYSTEM_MOVESIZESTART => {
-            IS_DRAGGING.store(true, Ordering::SeqCst);
-        }
-        EVENT_SYSTEM_MOVESIZEEND => {
-            IS_DRAGGING.store(false, Ordering::SeqCst);
-        }
-        EVENT_OBJECT_LOCATIONCHANGE => {}
-        _ => {}
-    }
-}
-
-impl WindowTracker {
-    pub fn install() -> Result<Self, String> {
-        unsafe {
-            let hook_start = SetWinEventHook(
-                EVENT_SYSTEM_MOVESIZESTART,
-                EVENT_SYSTEM_MOVESIZESTART,
-                None,
-                Some(winevent_proc),
-                0,
-                0,
-                WINEVENT_OUTOFCONTEXT,
-            );
-
-            let hook_end = SetWinEventHook(
-                EVENT_SYSTEM_MOVESIZEEND,
-                EVENT_SYSTEM_MOVESIZEEND,
-                None,
-                Some(winevent_proc),
-                0,
-                0,
-                WINEVENT_OUTOFCONTEXT,
-            );
-
-            let hook_loc = SetWinEventHook(
-                EVENT_OBJECT_LOCATIONCHANGE,
-                EVENT_OBJECT_LOCATIONCHANGE,
-                None,
-                Some(winevent_proc),
-                0,
-                0,
-                WINEVENT_OUTOFCONTEXT,
-            );
-
-            if hook_start.is_invalid() || hook_end.is_invalid() {
-                return Err("SetWinEventHook の登録に失敗しました。".to_string());
-            }
-
-            Ok(Self {
-                hook_movesize_start: hook_start,
-                hook_movesize_end: hook_end,
-                hook_location_change: hook_loc,
-            })
-        }
-    }
-}
-
-impl Drop for WindowTracker {
-    fn drop(&mut self) {
-        unsafe {
-            if !self.hook_movesize_start.is_invalid() {
-                let _ = UnhookWinEvent(self.hook_movesize_start);
-            }
-            if !self.hook_movesize_end.is_invalid() {
-                let _ = UnhookWinEvent(self.hook_movesize_end);
-            }
-            if !self.hook_location_change.is_invalid() {
-                let _ = UnhookWinEvent(self.hook_location_change);
-            }
-        }
-    }
-}

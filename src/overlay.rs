@@ -1,11 +1,11 @@
 use std::sync::atomic::{AtomicI32, Ordering};
-use std::sync::{Arc, Mutex};
+use std::sync::Mutex;
 use windows::core::w;
 use windows::Win32::Foundation::{COLORREF, HWND, LPARAM, LRESULT, RECT, WPARAM};
 use windows::Win32::Graphics::Gdi::{
     BeginPaint, CreateFontW, CreatePen, CreateSolidBrush, DeleteObject, EndPaint, FillRect,
     LineTo, MoveToEx, SelectObject, SetBkMode, SetTextColor, TextOutW, HBRUSH, HDC, HGDIOBJ,
-    PAINTSTRUCT, PEN_STYLE, PS_SOLID, TRANSPARENT,
+    PAINTSTRUCT, PS_SOLID, TRANSPARENT,
 };
 use windows::Win32::System::LibraryLoader::GetModuleHandleW;
 use windows::Win32::UI::WindowsAndMessaging::{
@@ -20,8 +20,6 @@ use windows::Win32::UI::WindowsAndMessaging::{
 pub struct GaugeData {
     pub weekly_pct: f64,
     pub five_h_pct: f64,
-    pub weekly_reset: String,
-    pub five_h_reset: String,
 }
 
 impl Default for GaugeData {
@@ -29,16 +27,12 @@ impl Default for GaugeData {
         Self {
             weekly_pct: 100.0,
             five_h_pct: 100.0,
-            weekly_reset: String::new(),
-            five_h_reset: String::new(),
         }
     }
 }
 
 pub struct TachometerOverlay {
     pub hwnd: HWND,
-    _current_alpha: Arc<AtomicI32>,
-    _data: Arc<Mutex<GaugeData>>,
 }
 
 static CURRENT_ALPHA: AtomicI32 = AtomicI32::new(0);
@@ -149,8 +143,8 @@ unsafe fn draw_meter(
             let x2 = cx + (radius as f64 * a2.cos()) as i32;
             let y2 = cy + (radius as f64 * a2.sin()) as i32;
 
-            MoveToEx(hdc, x1, y1, None);
-            LineTo(hdc, x2, y2);
+            let _ = MoveToEx(hdc, x1, y1, None);
+            let _ = LineTo(hdc, x2, y2);
         }
 
         let _ = DeleteObject(HGDIOBJ(pen_bg.0));
@@ -174,8 +168,8 @@ unsafe fn draw_meter(
             let x2 = cx + (radius as f64 * a2.cos()) as i32;
             let y2 = cy + (radius as f64 * a2.sin()) as i32;
 
-            MoveToEx(hdc, x1, y1, None);
-            LineTo(hdc, x2, y2);
+            let _ = MoveToEx(hdc, x1, y1, None);
+            let _ = LineTo(hdc, x2, y2);
         }
 
         let _ = DeleteObject(HGDIOBJ(pen_fg.0));
@@ -186,8 +180,8 @@ unsafe fn draw_meter(
 
         let pen_needle = CreatePen(PS_SOLID, 2, COLORREF(0x00FFFFFF));
         SelectObject(hdc, HGDIOBJ(pen_needle.0));
-        MoveToEx(hdc, cx, cy, None);
-        LineTo(hdc, nx, ny);
+        let _ = MoveToEx(hdc, cx, cy, None);
+        let _ = LineTo(hdc, nx, ny);
         let _ = DeleteObject(HGDIOBJ(pen_needle.0));
 
         let brush_hub = CreateSolidBrush(COLORREF(0x00FFFFFF));
@@ -241,11 +235,11 @@ unsafe fn draw_tachometers(hdc: HDC) {
 
         let border_pen = CreatePen(PS_SOLID, 1, COLORREF(0x003A3028));
         let old_pen = SelectObject(hdc, HGDIOBJ(border_pen.0));
-        MoveToEx(hdc, 0, 0, None);
-        LineTo(hdc, 279, 0);
-        LineTo(hdc, 279, 84);
-        LineTo(hdc, 0, 84);
-        LineTo(hdc, 0, 0);
+        let _ = MoveToEx(hdc, 0, 0, None);
+        let _ = LineTo(hdc, 279, 0);
+        let _ = LineTo(hdc, 279, 84);
+        let _ = LineTo(hdc, 0, 84);
+        let _ = LineTo(hdc, 0, 0);
         let _ = DeleteObject(HGDIOBJ(border_pen.0));
         SelectObject(hdc, old_pen);
 
@@ -270,8 +264,8 @@ unsafe fn draw_tachometers(hdc: HDC) {
 
         let sep_pen = CreatePen(PS_SOLID, 1, COLORREF(0x002E2620));
         SelectObject(hdc, HGDIOBJ(sep_pen.0));
-        MoveToEx(hdc, 140, 12, None);
-        LineTo(hdc, 140, 72);
+        let _ = MoveToEx(hdc, 140, 12, None);
+        let _ = LineTo(hdc, 140, 72);
         let _ = DeleteObject(HGDIOBJ(sep_pen.0));
 
         let five_h_color = if data.five_h_pct > 50.0 {
@@ -339,11 +333,7 @@ impl TachometerOverlay {
 
             SetTimer(Some(hwnd), 1, 16, None);
 
-            Ok(Self {
-                hwnd,
-                _current_alpha: Arc::new(AtomicI32::new(0)),
-                _data: Arc::new(Mutex::new(GaugeData::default())),
-            })
+            Ok(Self { hwnd })
         }
     }
 
@@ -358,7 +348,7 @@ impl TachometerOverlay {
                 right: 280,
                 bottom: 85,
             };
-            windows::Win32::Graphics::Gdi::InvalidateRect(Some(self.hwnd), Some(&rect), true);
+            let _ = windows::Win32::Graphics::Gdi::InvalidateRect(Some(self.hwnd), Some(&rect), true);
         }
     }
 
