@@ -1,4 +1,3 @@
-use std::env;
 use std::ffi::OsStr;
 use std::os::windows::ffi::OsStrExt;
 use windows::Win32::Foundation::{ERROR_FILE_NOT_FOUND, ERROR_SUCCESS};
@@ -52,9 +51,9 @@ pub fn set_startup_enabled(enabled: bool) -> Result<(), String> {
         }
 
         let result = if enabled {
-            let current_exe =
-                env::current_exe().map_err(|e| format!("実行ファイルのパス取得に失敗: {}", e))?;
-            let exe_path_wide = str_to_u16_vec(current_exe.as_os_str());
+            let target_exe = crate::runtime::RuntimeMode::get_preferred_release_exe()
+                .ok_or_else(|| "実行ファイルのパス取得に失敗".to_string())?;
+            let exe_path_wide = str_to_u16_vec(target_exe.as_os_str());
 
             let set_res = RegSetValueExW(
                 hkey,

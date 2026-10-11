@@ -1,5 +1,6 @@
 mod overlay;
 mod quota;
+mod runtime;
 mod startup;
 mod tracker;
 mod tray;
@@ -124,8 +125,10 @@ fn main() {
         }
     }
 
+    let runtime_mode = runtime::RuntimeMode::detect();
     println!("============================================================");
     println!(" Antigravity Quota HUD (Rust Native Tachometer Overlay)");
+    println!(" Mode: {}", runtime_mode.label());
     println!("============================================================");
 
     // 1. タコメーターオーバーレイウィンドウの作成

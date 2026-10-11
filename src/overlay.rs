@@ -626,6 +626,67 @@ fn render_hud(pixmap: &mut Pixmap) {
         Weight::SEMIBOLD,
     );
 
+    // 開発・watch実行中 (cargo run 等) は右上に明瞭な [DEV] バッジを表示
+    let runtime_mode = crate::runtime::RuntimeMode::detect();
+    if runtime_mode.is_dev() {
+        let badge_w = tokens.base_space * 3.25; // 26.0px
+        let badge_h = tokens.base_space * 1.5; // 12.0px
+        let badge_x = w - tokens.space_lg() - badge_w; // 182.0px
+        let badge_y = top_heading_y;
+        let badge_r = tokens.space_xs(); // 2.0px
+
+        let mut badge_pb = PathBuilder::new();
+        badge_pb.move_to(badge_x + badge_r, badge_y);
+        badge_pb.line_to(badge_x + badge_w - badge_r, badge_y);
+        badge_pb.quad_to(
+            badge_x + badge_w,
+            badge_y,
+            badge_x + badge_w,
+            badge_y + badge_r,
+        );
+        badge_pb.line_to(badge_x + badge_w, badge_y + badge_h - badge_r);
+        badge_pb.quad_to(
+            badge_x + badge_w,
+            badge_y + badge_h,
+            badge_x + badge_w - badge_r,
+            badge_y + badge_h,
+        );
+        badge_pb.line_to(badge_x + badge_r, badge_y + badge_h);
+        badge_pb.quad_to(
+            badge_x,
+            badge_y + badge_h,
+            badge_x,
+            badge_y + badge_h - badge_r,
+        );
+        badge_pb.line_to(badge_x, badge_y + badge_r);
+        badge_pb.quad_to(badge_x, badge_y, badge_x + badge_r, badge_y);
+        badge_pb.close();
+
+        if let Some(badge_path) = badge_pb.finish() {
+            let mut paint = Paint::default();
+            paint.set_color_rgba8(217, 119, 6, 210); // 上品な Amber-600
+            paint.anti_alias = true;
+            pixmap.fill_path(
+                &badge_path,
+                &paint,
+                FillRule::Winding,
+                Transform::identity(),
+                None,
+            );
+        }
+
+        draw_text(
+            pixmap,
+            "DEV",
+            badge_x + (badge_w / 2.0),
+            badge_y + 1.5,
+            tokens.font_caption() * 0.9,
+            Color::from_rgba8(255, 255, 255, 245),
+            true,
+            Weight::BOLD,
+        );
+    }
+
     let top_meter_cy = tokens.base_space * 9.25; // 74.0px
     let gem_weekly_color = get_quota_color(data.gemini.weekly_pct);
     let gem_weekly_val = format!("{:.0}%", data.gemini.weekly_pct);
