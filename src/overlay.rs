@@ -17,12 +17,14 @@ use windows::Win32::UI::WindowsAndMessaging::{
 use windows::core::w;
 
 pub const HUD_WIDTH: u32 = 220;
-pub const HUD_HEIGHT: u32 = 235;
+pub const HUD_HEIGHT: u32 = 240;
 
 #[derive(Debug, Clone, Default)]
 pub struct GroupQuota {
     pub weekly_pct: f64,
     pub five_h_pct: f64,
+    pub weekly_reset: Option<String>,
+    pub five_h_reset: Option<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -37,10 +39,14 @@ impl Default for GaugeData {
             gemini: GroupQuota {
                 weekly_pct: 100.0,
                 five_h_pct: 100.0,
+                weekly_reset: None,
+                five_h_reset: None,
             },
             claude_gpt: GroupQuota {
                 weekly_pct: 100.0,
                 five_h_pct: 100.0,
+                weekly_reset: None,
+                five_h_reset: None,
             },
         }
     }
@@ -323,6 +329,7 @@ fn render_tachometer(
     label: &str,
     val_text: &str,
     theme_color: Color,
+    reset_text: Option<&str>,
 ) {
     let start_deg = 145.0;
     let sweep_deg = 250.0;
@@ -436,12 +443,26 @@ fn render_tachometer(
         pixmap,
         val_text,
         cx,
-        cy + 7.0,
+        cy + 5.5,
         11.5,
         theme_color,
         true,
         Weight::BOLD,
     );
+
+    // 7. リセット日時 (パーセント値の直下に控えめかつクリアに配置)
+    if let Some(reset) = reset_text {
+        draw_text(
+            pixmap,
+            reset,
+            cx,
+            cy + 20.0,
+            8.5,
+            Color::from_rgba8(160, 174, 192, 240), // 視認性の高いスレートグレー (#a0aec0)
+            true,
+            Weight::MEDIUM,
+        );
+    }
 }
 
 fn get_quota_color(pct: f64) -> Color {
@@ -535,6 +556,7 @@ fn render_hud(pixmap: &mut Pixmap) {
         "Weekly Limit",
         &gem_weekly_val,
         gem_weekly_color,
+        data.gemini.weekly_reset.as_deref(),
     );
 
     let gem_5h_color = get_quota_color(data.gemini.five_h_pct);
@@ -548,6 +570,7 @@ fn render_hud(pixmap: &mut Pixmap) {
         "5-Hour Burst",
         &gem_5h_val,
         gem_5h_color,
+        data.gemini.five_h_reset.as_deref(),
     );
 
     // ==========================================
@@ -592,6 +615,7 @@ fn render_hud(pixmap: &mut Pixmap) {
         "Weekly Limit",
         &cg_weekly_val,
         cg_weekly_color,
+        data.claude_gpt.weekly_reset.as_deref(),
     );
 
     let cg_5h_color = get_quota_color(data.claude_gpt.five_h_pct);
@@ -605,6 +629,7 @@ fn render_hud(pixmap: &mut Pixmap) {
         "5-Hour Burst",
         &cg_5h_val,
         cg_5h_color,
+        data.claude_gpt.five_h_reset.as_deref(),
     );
 }
 
@@ -694,5 +719,50 @@ impl TachometerOverlay {
                 SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE,
             );
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_render_hud_with_reset_timestamps() {
+        {
+            let mut lock = FONT_SYSTEM.lock().unwrap();
+            if lock.is_none() {
+                let font_system = FontSystem::new();
+                let cache = SwashCache::new();
+                *lock = Some((font_system, cache));
+            }
+        }
+
+        let test_data = GaugeData {
+            gemini: GroupQuota {
+                weekly_pct: 78.0,
+                five_h_pct: 100.0,
+                weekly_reset: Some("10/17 21:32".to_string()),
+                five_h_reset: Some("10/11 21:27".to_string()),
+            },
+            claude_gpt: GroupQuota {
+                weekly_pct: 42.0,
+                five_h_pct: 15.0,
+                weekly_reset: Some("10/17 21:32".to_string()),
+                five_h_reset: Some("10/11 18:45".to_string()),
+            },
+        };
+
+        if let Ok(mut lock) = GLOBAL_DATA.lock() {
+            *lock = Some(test_data);
+        }
+
+        let mut pixmap = Pixmap::new(HUD_WIDTH, HUD_HEIGHT).unwrap();
+        pixmap.fill(Color::TRANSPARENT);
+        render_hud(&mut pixmap);
+
+        let out_path = "C:\\Users\\yumatsuzawa\\.gemini\\antigravity\\brain\\dda008b2-8fab-4216-9b5f-eb58f87735e9\\scratch\\hud_rendered.png";
+        pixmap
+            .save_png(out_path)
+            .expect("Failed to save render test PNG");
     }
 }

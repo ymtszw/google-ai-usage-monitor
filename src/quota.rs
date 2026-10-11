@@ -290,6 +290,18 @@ mod tests {
     fn test_fetch_both_quota_groups() {
         if let Ok(quota) = fetch_quota() {
             assert!(!quota.groups.is_empty(), "Quota groups should not be empty");
+            for g in &quota.groups {
+                println!("Group: {}", g.display_name);
+                for b in &g.buckets {
+                    println!(
+                        "  Bucket: {:?} / {} -> remaining: {:.1}%, resetTime: {:?}",
+                        b.bucket_id,
+                        b.display_name,
+                        b.remaining_fraction * 100.0,
+                        b.reset_time
+                    );
+                }
+            }
             let has_gemini = quota
                 .groups
                 .iter()

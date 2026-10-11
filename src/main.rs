@@ -11,17 +11,28 @@ use windows::Win32::UI::WindowsAndMessaging::{
     DispatchMessageW, GetCursorPos, MSG, PM_REMOVE, PeekMessageW, TranslateMessage,
 };
 
+fn format_reset_time(iso_str: Option<&str>) -> Option<String> {
+    let s = iso_str?;
+    let utc_dt = chrono::DateTime::parse_from_rfc3339(s).ok()?;
+    let local_dt: chrono::DateTime<chrono::Local> = chrono::DateTime::from(utc_dt);
+    Some(local_dt.format("%m/%d %H:%M").to_string())
+}
+
 fn extract_group_quota(group: Option<&quota::GroupInfo>) -> overlay::GroupQuota {
     let mut weekly_pct = 100.0;
     let mut five_h_pct = 100.0;
+    let mut weekly_reset = None;
+    let mut five_h_reset = None;
 
     if let Some(g) = group {
         for b in &g.buckets {
             if let Some(id) = &b.bucket_id {
                 if id.contains("weekly") {
                     weekly_pct = b.remaining_fraction * 100.0;
+                    weekly_reset = format_reset_time(b.reset_time.as_deref());
                 } else if id.contains("5h") {
                     five_h_pct = b.remaining_fraction * 100.0;
+                    five_h_reset = format_reset_time(b.reset_time.as_deref());
                 }
             }
         }
@@ -30,6 +41,8 @@ fn extract_group_quota(group: Option<&quota::GroupInfo>) -> overlay::GroupQuota 
     overlay::GroupQuota {
         weekly_pct,
         five_h_pct,
+        weekly_reset,
+        five_h_reset,
     }
 }
 
