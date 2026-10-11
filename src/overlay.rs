@@ -16,8 +16,8 @@ use windows::Win32::UI::WindowsAndMessaging::{
 };
 use windows::core::w;
 
-pub const HUD_WIDTH: u32 = 190;
-pub const HUD_HEIGHT: u32 = 205;
+pub const HUD_WIDTH: u32 = 200;
+pub const HUD_HEIGHT: u32 = 215;
 
 #[derive(Debug, Clone, Default)]
 pub struct GroupQuota {
@@ -211,6 +211,7 @@ fn render_to_surface(hwnd: HWND, alpha: u8) {
     pixmap.fill(Color::TRANSPARENT);
 
     render_hud(&mut pixmap);
+    let _ = pixmap.save_png("C:\\Users\\yumatsuzawa\\.gemini\\antigravity\\brain\\dda008b2-8fab-4216-9b5f-eb58f87735e9\\scratch\\hud_rendered.png");
 
     with_surface(|surf| unsafe {
         let src_slice = pixmap.data();
@@ -323,12 +324,12 @@ fn render_tachometer(
     let sweep_deg = 250.0;
     let track_width = 4.2;
 
-    // 1. メーター上部ラベル (メーター円弧との十分なクリアランス: 16px)
+    // 1. メーター上部ラベル (メーター円弧との明確な空間を確保: 23px)
     draw_text(
         pixmap,
         label,
         cx,
-        cy - radius - 16.0,
+        cy - radius - 23.0,
         9.0,
         Color::from_rgba8(195, 205, 220, 240),
         true,
@@ -490,9 +491,9 @@ fn render_hud(pixmap: &mut Pixmap) {
         );
     }
 
-    // メーターの X 座標: HUD 幅 190px に対して大胆に左右を詰める（間隔 82px）
-    let left_cx = 54.0;
-    let right_cx = 136.0;
+    // メーターの X 座標: HUD 幅 200px に対して左右を心地よく引き締める（間隔 84px）
+    let left_cx = 58.0;
+    let right_cx = 142.0;
     let meter_r = 19.0;
 
     // ==========================================
@@ -502,7 +503,7 @@ fn render_hud(pixmap: &mut Pixmap) {
         pixmap,
         "GEMINI MODELS",
         w / 2.0,
-        11.0,
+        12.0,
         10.0,
         Color::from_rgba8(77, 170, 252, 240), // Google Cyan
         true,
@@ -513,7 +514,7 @@ fn render_hud(pixmap: &mut Pixmap) {
     render_tachometer(
         pixmap,
         left_cx,
-        61.0,
+        69.0,
         meter_r,
         data.gemini.weekly_pct,
         "Weekly Limit",
@@ -526,7 +527,7 @@ fn render_hud(pixmap: &mut Pixmap) {
     render_tachometer(
         pixmap,
         right_cx,
-        61.0,
+        69.0,
         meter_r,
         data.gemini.five_h_pct,
         "5-Hour Burst",
@@ -538,8 +539,8 @@ fn render_hud(pixmap: &mut Pixmap) {
     // 水平ディバイダーライン
     // ==========================================
     let mut sep_pb = PathBuilder::new();
-    sep_pb.move_to(16.0, 103.0);
-    sep_pb.line_to(w - 16.0, 103.0);
+    sep_pb.move_to(18.0, 110.0);
+    sep_pb.line_to(w - 18.0, 110.0);
     if let Some(sep_path) = sep_pb.finish() {
         let mut sep_paint = Paint::default();
         sep_paint.set_color_rgba8(55, 65, 80, 120);
@@ -558,7 +559,7 @@ fn render_hud(pixmap: &mut Pixmap) {
         pixmap,
         "CLAUDE & GPT",
         w / 2.0,
-        114.0,
+        122.0,
         10.0,
         Color::from_rgba8(245, 158, 11, 240), // Anthropic Amber
         true,
@@ -569,7 +570,7 @@ fn render_hud(pixmap: &mut Pixmap) {
     render_tachometer(
         pixmap,
         left_cx,
-        164.0,
+        179.0,
         meter_r,
         data.claude_gpt.weekly_pct,
         "Weekly Limit",
@@ -582,7 +583,7 @@ fn render_hud(pixmap: &mut Pixmap) {
     render_tachometer(
         pixmap,
         right_cx,
-        164.0,
+        179.0,
         meter_r,
         data.claude_gpt.five_h_pct,
         "5-Hour Burst",
