@@ -2,7 +2,7 @@
 name = "google-ai-usage-monitor"
 version = "0.1.0"
 edition = "2024"
-license = "MIT OR Apache-2.0"
+license = "MIT"
 description = "Lightweight Win32 HUD overlay to monitor Google AI Pro quota inside Google Antigravity"
 
 [dependencies]
