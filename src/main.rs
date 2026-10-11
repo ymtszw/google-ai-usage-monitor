@@ -96,7 +96,7 @@ fn main() {
 
                 last_bounds = Some(bounds);
 
-                let overlay_x = bounds.right - overlay::HUD_WIDTH - 150;
+                let overlay_x = bounds.right - overlay::HUD_WIDTH as i32 - 140;
                 let overlay_y = bounds.top + 38;
                 overlay.set_position(overlay_x, overlay_y);
 
