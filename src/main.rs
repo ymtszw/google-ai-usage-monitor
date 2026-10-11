@@ -11,27 +11,44 @@ use windows::Win32::UI::WindowsAndMessaging::{
     DispatchMessageW, GetCursorPos, MSG, PM_REMOVE, PeekMessageW, TranslateMessage,
 };
 
-fn extract_gemini_gauge_data() -> Option<GaugeData> {
-    let quota = fetch_quota().ok()?;
-    let gemini = quota
-        .groups
-        .into_iter()
-        .find(|g| g.display_name == "Gemini Models")?;
-
+fn extract_group_quota(group: Option<&quota::GroupInfo>) -> overlay::GroupQuota {
     let mut weekly_pct = 100.0;
     let mut five_h_pct = 100.0;
 
-    for b in gemini.buckets {
-        if b.bucket_id.as_deref() == Some("gemini-weekly") {
-            weekly_pct = b.remaining_fraction * 100.0;
-        } else if b.bucket_id.as_deref() == Some("gemini-5h") {
-            five_h_pct = b.remaining_fraction * 100.0;
+    if let Some(g) = group {
+        for b in &g.buckets {
+            if let Some(id) = &b.bucket_id {
+                if id.contains("weekly") {
+                    weekly_pct = b.remaining_fraction * 100.0;
+                } else if id.contains("5h") {
+                    five_h_pct = b.remaining_fraction * 100.0;
+                }
+            }
         }
     }
 
-    Some(GaugeData {
+    overlay::GroupQuota {
         weekly_pct,
         five_h_pct,
+    }
+}
+
+fn extract_all_gauge_data() -> Option<GaugeData> {
+    let quota = fetch_quota().ok()?;
+
+    let gemini_group = quota
+        .groups
+        .iter()
+        .find(|g| g.display_name.to_lowercase().contains("gemini"));
+
+    let claude_gpt_group = quota.groups.iter().find(|g| {
+        g.display_name.to_lowercase().contains("claude")
+            || g.display_name.to_lowercase().contains("gpt")
+    });
+
+    Some(GaugeData {
+        gemini: extract_group_quota(gemini_group),
+        claude_gpt: extract_group_quota(claude_gpt_group),
     })
 }
 
@@ -72,10 +89,13 @@ fn main() {
 
         // 5分ごとにクォータデータを最新化 (初回は即時)
         if last_fetch.elapsed() >= Duration::from_secs(300) {
-            if let Some(data) = extract_gemini_gauge_data() {
+            if let Some(data) = extract_all_gauge_data() {
                 println!(
-                    " [Quota Update] Weekly: {:.1}%, 5-Hour: {:.1}%",
-                    data.weekly_pct, data.five_h_pct
+                    " [Quota Update] Gemini (W: {:.1}%, 5h: {:.1}%) | Claude/GPT (W: {:.1}%, 5h: {:.1}%)",
+                    data.gemini.weekly_pct,
+                    data.gemini.five_h_pct,
+                    data.claude_gpt.weekly_pct,
+                    data.claude_gpt.five_h_pct
                 );
                 overlay.update_data(data);
             }
