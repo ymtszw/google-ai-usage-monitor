@@ -69,14 +69,14 @@ unsafe extern "system" fn wnd_proc(
 
                 if cur != target {
                     let next = if cur < target {
-                        // フェードイン: 滑らかな ease-out で上品に表示
+                        // フェードイン: 程よい長さ（約120ms）でスッと気持ちよく立ち上がる
                         let diff = target - cur;
-                        let step = ((diff as f32 * 0.25).ceil() as i32).clamp(6, 22);
+                        let step = ((diff as f32 * 0.38).ceil() as i32).clamp(14, 45);
                         (cur + step).min(target)
                     } else {
-                        // フェードアウト: 移動開始時は素早く、しかし 1 フレームで飛ばずにスムーズに減衰
+                        // フェードアウト: よりスピーディに、わずかにアニメーションが知覚できる速度（約50-60ms）で消える
                         let diff = cur - target;
-                        let step = ((diff as f32 * 0.35).ceil() as i32).clamp(14, 38);
+                        let step = ((diff as f32 * 0.55).ceil() as i32).clamp(35, 80);
                         (cur - step).max(target)
                     };
 

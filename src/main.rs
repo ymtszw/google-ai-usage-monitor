@@ -105,8 +105,8 @@ fn main() {
                 last_bounds = Some(bounds);
 
                 if is_moving {
-                    // 移動中: 最後の座標変化から 280ms 完全に静止したら定常状態とみなす (debounce)
-                    if last_move_time.elapsed() >= Duration::from_millis(280) {
+                    // 移動中: 最後の座標変化から 200ms 完全に静止したら定常状態とみなす (debounce)
+                    if last_move_time.elapsed() >= Duration::from_millis(200) {
                         // 静止確定: 落ち着いた新位置へテレポートさせてから上品にフェードイン
                         overlay.set_position(overlay_x, overlay_y);
                         overlay.fade_in();
