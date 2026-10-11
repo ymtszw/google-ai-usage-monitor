@@ -281,3 +281,25 @@ pub fn fetch_quota() -> Result<AntigravityQuota, String> {
 
     Err("有効な language_server API ポートと通信できませんでした。".to_string())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_fetch_both_quota_groups() {
+        if let Ok(quota) = fetch_quota() {
+            assert!(!quota.groups.is_empty(), "Quota groups should not be empty");
+            let has_gemini = quota
+                .groups
+                .iter()
+                .any(|g| g.display_name.contains("Gemini"));
+            let has_claude = quota
+                .groups
+                .iter()
+                .any(|g| g.display_name.contains("Claude") || g.display_name.contains("GPT"));
+            assert!(has_gemini, "Should contain Gemini quota group");
+            assert!(has_claude, "Should contain Claude/GPT quota group");
+        }
+    }
+}
