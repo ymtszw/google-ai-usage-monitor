@@ -309,12 +309,14 @@ pub unsafe fn handle_tray_message(hwnd: HWND, lparam: LPARAM) -> LRESULT {
     match msg {
         windows::Win32::UI::WindowsAndMessaging::WM_RBUTTONUP
         | windows::Win32::UI::WindowsAndMessaging::WM_CONTEXTMENU => {
+            crate::request_refresh();
             unsafe {
                 show_tray_menu(hwnd);
             }
             LRESULT(0)
         }
         windows::Win32::UI::WindowsAndMessaging::WM_LBUTTONUP => {
+            crate::request_refresh();
             TrayIcon::toggle_hud();
             LRESULT(0)
         }

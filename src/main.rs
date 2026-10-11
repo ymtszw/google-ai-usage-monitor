@@ -86,6 +86,13 @@ fn extract_all_gauge_data() -> Option<GaugeData> {
     })
 }
 
+static REFRESH_REQUESTED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+/// トレイクリックや状態変化時にクォータ更新を即時要求
+pub fn request_refresh() {
+    REFRESH_REQUESTED.store(true, std::sync::atomic::Ordering::SeqCst);
+}
+
 fn main() {
     // CLI 引数のチェック (スタートアップ登録・解除)
     let args: Vec<String> = std::env::args().collect();
@@ -162,6 +169,7 @@ fn main() {
     let mut last_bounds = None;
     let mut last_move_time = Instant::now() - Duration::from_secs(10);
     let mut is_moving = false;
+    let mut was_hud_shown = false;
 
     // メッセージループ & 追従ループ
     loop {
@@ -169,13 +177,23 @@ fn main() {
         unsafe {
             let mut msg = MSG::default();
             while PeekMessageW(&mut msg, None, 0, 0, PM_REMOVE).as_bool() {
+                if msg.message == windows::Win32::UI::WindowsAndMessaging::WM_QUIT {
+                    return;
+                }
                 let _ = TranslateMessage(&msg);
                 DispatchMessageW(&msg);
             }
         }
 
-        // 5分ごとにクォータデータを最新化 (初回は即時)
-        if last_fetch.elapsed() >= Duration::from_secs(300) {
+        // クォータデータの最新化:
+        // 1. 定期5分経過
+        // 2. トレイクリックまたは非表示->表示遷移による明示的更新要求 (最短3秒デバウンス)
+        let is_periodic = last_fetch.elapsed() >= Duration::from_secs(300);
+        let is_requested = REFRESH_REQUESTED.load(std::sync::atomic::Ordering::SeqCst)
+            && last_fetch.elapsed() >= Duration::from_secs(3);
+
+        if is_periodic || is_requested {
+            REFRESH_REQUESTED.store(false, std::sync::atomic::Ordering::SeqCst);
             if let Some(data) = extract_all_gauge_data() {
                 println!(
                     " [Quota Update] Gemini (W: {:.1}%, 5h: {:.1}%) | Claude/GPT (W: {:.1}%, 5h: {:.1}%)",
@@ -190,6 +208,7 @@ fn main() {
             last_fetch = Instant::now();
         }
 
+        let mut is_hud_shown = false;
         let hud_user_visible = tray::TrayIcon::is_hud_visible();
 
         // Antigravity ウィンドウの探索・追従
@@ -233,6 +252,7 @@ fn main() {
                             is_moving = false;
                             if !is_mouse_near {
                                 overlay.fade_in();
+                                is_hud_shown = true;
                             }
                         }
                     } else if is_mouse_near {
@@ -241,6 +261,7 @@ fn main() {
                     } else {
                         // 通常時 (静止中かつマウスが離れている) -> フェードイン表示
                         overlay.fade_in();
+                        is_hud_shown = true;
                     }
                 } else {
                     if !is_moving {
@@ -260,6 +281,12 @@ fn main() {
             // トレイメニューで「HUD を非表示」に設定中
             overlay.fade_out();
         }
+
+        // 非表示状態から表示状態に遷移した瞬間にクォータ最新化をリクエスト
+        if !was_hud_shown && is_hud_shown {
+            request_refresh();
+        }
+        was_hud_shown = is_hud_shown;
 
         std::thread::sleep(Duration::from_millis(16)); // 60fps (16ms) 追従
     }
