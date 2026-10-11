@@ -7,13 +7,18 @@ Google Antigravity の内部言語サーバー (`language_server.exe`) と連携
 本プロジェクトの開発環境は、Windows パッケージマネージャー (`winget`) を起点として宣言的に構築できます。
 
 ```powershell
-# 1. Rust ツールチェーンのインストール
+# 1. Rust ツールチェーンおよび C リンカー (WinLibs LLVM/GCC) のインストール
 winget install --id Rustlang.Rustup -e --accept-source-agreements --accept-package-agreements
+winget install --id BrechtSanders.WinLibs.POSIX.UCRT.LLVM -e --accept-source-agreements --accept-package-agreements
 
-# 2. 環境変数の再読み込み (または新しいターミナルを開く)
+# 2. 環境変数の再読み込み
 $env:Path = "$env:USERPROFILE\.cargo\bin;" + $env:Path
 
-# 3. 動作確認
+# 3. Windows GNU ターゲットの導入とデフォルト設定
+rustup toolchain install stable-x86_64-pc-windows-gnu
+rustup default stable-x86_64-pc-windows-gnu
+
+# 4. 動作確認
 rustc --version
 cargo --version
 ```
