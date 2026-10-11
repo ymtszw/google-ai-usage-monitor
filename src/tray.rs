@@ -220,7 +220,10 @@ impl TrayIcon {
         let hicon = generate_tray_hicon(100.0);
         self.current_icon = hicon;
 
-        let tip = to_u16_slice_128("Google AI Usage Monitor (Gemini: 100%)");
+        let mode = crate::runtime::RuntimeMode::detect();
+        let mode_tag = if mode.is_dev() { " [DEV]" } else { "" };
+        let tip_str = format!("Google AI Usage Monitor{}\nGemini: 100%", mode_tag);
+        let tip = to_u16_slice_128(&tip_str);
 
         let nid = NOTIFYICONDATAW {
             cbSize: std::mem::size_of::<NOTIFYICONDATAW>() as u32,
@@ -246,9 +249,11 @@ impl TrayIcon {
             }
         }
 
+        let mode = crate::runtime::RuntimeMode::detect();
+        let mode_tag = if mode.is_dev() { " [DEV]" } else { "" };
         let tip_str = format!(
-            "Google AI Usage Monitor\nGemini 5h: {:.0}% | W: {:.0}%\nClaude 5h: {:.0}% | W: {:.0}%",
-            gemini.five_h_pct, gemini.weekly_pct, claude.five_h_pct, claude.weekly_pct
+            "Google AI Usage Monitor{}\nGemini 5h: {:.0}% | W: {:.0}%\nClaude 5h: {:.0}% | W: {:.0}%",
+            mode_tag, gemini.five_h_pct, gemini.weekly_pct, claude.five_h_pct, claude.weekly_pct
         );
         let tip = to_u16_slice_128(&tip_str);
 
@@ -330,7 +335,13 @@ unsafe fn show_tray_menu(hwnd: HWND) {
         let _ = SetForegroundWindow(hwnd);
 
         // 1. タイトル/情報ヘッダー
-        let header_str = to_wide_str("Google AI Usage Monitor");
+        let mode = crate::runtime::RuntimeMode::detect();
+        let header_text = if mode.is_dev() {
+            format!("Google AI Usage Monitor ({})", mode.label())
+        } else {
+            "Google AI Usage Monitor (Release)".to_string()
+        };
+        let header_str = to_wide_str(&header_text);
         let _ = AppendMenuW(
             hmenu,
             MF_STRING | MF_DISABLED | MF_GRAYED,
