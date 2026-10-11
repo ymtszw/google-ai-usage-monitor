@@ -291,7 +291,6 @@ fn render_to_surface(hwnd: HWND, alpha: u8) {
     pixmap.fill(Color::TRANSPARENT);
 
     render_hud(&mut pixmap);
-    let _ = pixmap.save_png("C:\\Users\\yumatsuzawa\\.gemini\\antigravity\\brain\\dda008b2-8fab-4216-9b5f-eb58f87735e9\\scratch\\hud_rendered.png");
 
     with_surface(|surf| unsafe {
         let src_slice = pixmap.data();
@@ -911,9 +910,11 @@ mod tests {
         pixmap.fill(Color::TRANSPARENT);
         render_hud(&mut pixmap);
 
-        let out_path = "C:\\Users\\yumatsuzawa\\.gemini\\antigravity\\brain\\dda008b2-8fab-4216-9b5f-eb58f87735e9\\scratch\\hud_rendered.png";
+        let out_path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("target")
+            .join("hud_rendered.png");
         pixmap
-            .save_png(out_path)
+            .save_png(&out_path)
             .expect("Failed to save render test PNG");
     }
 
