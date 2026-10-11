@@ -84,8 +84,9 @@ fn main() {
         // Antigravity ウィンドウの探索・追従
         if let Some(target) = find_antigravity_window() {
             if let Some(bounds) = get_target_bounds(target) {
-                let overlay_x = bounds.right - overlay::HUD_WIDTH as i32 - 140;
-                let overlay_y = bounds.top + 38;
+                // Antigravity GUI の右下に配置 (右マージン 24px, 下マージン 32px)
+                let overlay_x = bounds.right - overlay::HUD_WIDTH as i32 - 24;
+                let overlay_y = bounds.bottom - overlay::HUD_HEIGHT as i32 - 32;
 
                 if let Some(prev) = last_bounds {
                     if prev != bounds {
