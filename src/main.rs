@@ -1,7 +1,9 @@
+mod detector;
 mod overlay;
 mod quota;
 mod tracker;
 
+use detector::select_best_overlay_y;
 use overlay::{GaugeData, TachometerOverlay};
 use quota::fetch_quota;
 use std::time::{Duration, Instant};
@@ -98,8 +100,15 @@ fn main() {
                         last_move_time = Instant::now();
                     }
                 } else {
-                    // 初回検知時: 新位置へ配置してフェードイン
-                    overlay.set_position(overlay_x, overlay_y);
+                    // 初回検知時: 背後UI要素を検知して最適Y座標を計算
+                    let best_y = select_best_overlay_y(
+                        overlay_x,
+                        overlay_y,
+                        bounds.top,
+                        overlay::HUD_WIDTH,
+                        overlay::HUD_HEIGHT,
+                    );
+                    overlay.set_position(overlay_x, best_y);
                     overlay.fade_in();
                 }
 
@@ -108,8 +117,15 @@ fn main() {
                 if is_moving {
                     // 移動中: 最後の座標変化から 200ms 完全に静止したら定常状態とみなす (debounce)
                     if last_move_time.elapsed() >= Duration::from_millis(200) {
-                        // 静止確定: 落ち着いた新位置へテレポートさせてから上品にフェードイン
-                        overlay.set_position(overlay_x, overlay_y);
+                        // 静止確定: 背後UI要素（ボタン・テキスト等）を検知して最適Y座標を決定
+                        let best_y = select_best_overlay_y(
+                            overlay_x,
+                            overlay_y,
+                            bounds.top,
+                            overlay::HUD_WIDTH,
+                            overlay::HUD_HEIGHT,
+                        );
+                        overlay.set_position(overlay_x, best_y);
                         overlay.fade_in();
                         is_moving = false;
                     }
