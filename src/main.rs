@@ -1,3 +1,5 @@
+#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
+
 mod overlay;
 mod quota;
 mod runtime;
@@ -88,6 +90,13 @@ fn main() {
     // CLI 引数のチェック (スタートアップ登録・解除)
     let args: Vec<String> = std::env::args().collect();
     if args.len() > 1 {
+        // コマンドライン実行時は親コンソール (cmd / PowerShell) に標準出力をアタッチ
+        unsafe {
+            let _ = windows::Win32::System::Console::AttachConsole(
+                windows::Win32::System::Console::ATTACH_PARENT_PROCESS,
+            );
+        }
+
         match args[1].as_str() {
             "--register-startup" => {
                 match startup::set_startup_enabled(true) {
