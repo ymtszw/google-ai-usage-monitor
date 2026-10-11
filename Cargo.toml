@@ -6,6 +6,7 @@ license = "MIT OR Apache-2.0"
 description = "Lightweight Win32 HUD overlay to monitor Google AI Pro quota inside Google Antigravity"
 
 [dependencies]
+chrono = "0.4.45"
 cosmic-text = "0.19.0"
 regex = "1.13.1"
 reqwest = { version = "0.13.5", features = ["json", "blocking"] }
