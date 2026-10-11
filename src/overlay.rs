@@ -1,4 +1,4 @@
-use cosmic_text::{Attrs, Color as CColor, FontSystem, Metrics, Shaping, SwashCache};
+use cosmic_text::{Attrs, Color as CColor, FontSystem, Metrics, Shaping, SwashCache, Weight};
 use std::sync::Mutex;
 use std::sync::atomic::{AtomicI32, Ordering};
 use tiny_skia::*;
@@ -235,6 +235,7 @@ fn render_to_surface(hwnd: HWND, alpha: u8) {
 }
 
 /// 高品位テキスト描画ヘルパー
+#[allow(clippy::too_many_arguments)]
 fn draw_text(
     pixmap: &mut Pixmap,
     text: &str,
@@ -243,6 +244,7 @@ fn draw_text(
     font_size: f32,
     color: Color,
     center: bool,
+    weight: Weight,
 ) {
     let mut lock = FONT_SYSTEM.lock().unwrap();
     let (font_system, cache) = lock.as_mut().unwrap();
@@ -251,7 +253,9 @@ fn draw_text(
         cosmic_text::Buffer::new(font_system, Metrics::new(font_size, font_size * 1.2));
     let mut buffer = buffer.borrow_with(font_system);
     buffer.set_size(Some(200.0), Some(50.0));
-    buffer.set_text(text, &Attrs::new(), Shaping::Advanced, None);
+    let mut attrs = Attrs::new();
+    attrs = attrs.weight(weight);
+    buffer.set_text(text, &attrs, Shaping::Advanced, None);
     buffer.shape_until_scroll(true);
 
     let text_width = buffer.layout_runs().next().map(|r| r.line_w).unwrap_or(0.0);
@@ -331,8 +335,9 @@ fn render_tachometer(
         cx,
         cy - radius - 23.0,
         9.0,
-        Color::from_rgba8(195, 205, 220, 240),
+        Color::from_rgba8(220, 228, 240, 245), // 鮮明な高コントラストオフホワイト
         true,
+        Weight::MEDIUM,
     );
 
     // 2. 背景トラック
@@ -426,17 +431,26 @@ fn render_tachometer(
         );
     }
 
-    // 6. パーセント値
-    draw_text(pixmap, val_text, cx, cy + 7.0, 11.0, theme_color, true);
+    // 6. パーセント値 (くっきりと力強い太字 11.5px)
+    draw_text(
+        pixmap,
+        val_text,
+        cx,
+        cy + 7.0,
+        11.5,
+        theme_color,
+        true,
+        Weight::BOLD,
+    );
 }
 
 fn get_quota_color(pct: f64) -> Color {
     if pct > 50.0 {
-        Color::from_rgba8(0, 230, 118, 255)
+        Color::from_rgba8(52, 211, 153, 255) // 高視認性エメラルドグリーン (#34d399)
     } else if pct > 20.0 {
-        Color::from_rgba8(255, 179, 0, 255)
+        Color::from_rgba8(251, 191, 36, 255) // 鮮やかなアンバーゴールド (#fbbf24)
     } else {
-        Color::from_rgba8(255, 61, 0, 255)
+        Color::from_rgba8(248, 113, 113, 255) // 鮮明なコーラルレッド (#f87171)
     }
 }
 
@@ -505,8 +519,9 @@ fn render_hud(pixmap: &mut Pixmap) {
         w / 2.0,
         12.0,
         10.0,
-        Color::from_rgba8(77, 170, 252, 240), // Google Cyan
+        Color::from_rgba8(96, 165, 250, 255), // 高視認性 Google Blue (#60a5fa)
         true,
+        Weight::SEMIBOLD,
     );
 
     let gem_weekly_color = get_quota_color(data.gemini.weekly_pct);
@@ -561,8 +576,9 @@ fn render_hud(pixmap: &mut Pixmap) {
         w / 2.0,
         122.0,
         10.0,
-        Color::from_rgba8(245, 158, 11, 240), // Anthropic Amber
+        Color::from_rgba8(251, 191, 36, 255), // 高視認性 Warm Amber (#fbbf24)
         true,
+        Weight::SEMIBOLD,
     );
 
     let cg_weekly_color = get_quota_color(data.claude_gpt.weekly_pct);
