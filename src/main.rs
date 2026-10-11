@@ -84,36 +84,48 @@ fn main() {
         // Antigravity ウィンドウの探索・追従
         if let Some(target) = find_antigravity_window() {
             if let Some(bounds) = get_target_bounds(target) {
-                // ウィンドウの座標が前フレームから変化したか判定
+                let overlay_x = bounds.right - overlay::HUD_WIDTH as i32 - 140;
+                let overlay_y = bounds.top + 38;
+
                 if let Some(prev) = last_bounds {
                     if prev != bounds {
-                        // 移動またはリサイズ検知 -> フェードアウト
-                        overlay.fade_out();
+                        // 移動またはリサイズ検知 -> 即座にフェードアウトを開始し、移動完了まで待機
+                        if !is_moving {
+                            overlay.fade_out();
+                            is_moving = true;
+                        }
                         last_move_time = Instant::now();
-                        is_moving = true;
                     }
+                } else {
+                    // 初回検知時: 新位置へ配置してフェードイン
+                    overlay.set_position(overlay_x, overlay_y);
+                    overlay.fade_in();
                 }
 
                 last_bounds = Some(bounds);
 
-                let overlay_x = bounds.right - overlay::HUD_WIDTH as i32 - 140;
-                let overlay_y = bounds.top + 38;
-                overlay.set_position(overlay_x, overlay_y);
-
                 if is_moving {
-                    // 移動・リサイズが止まって 150ms 経過したらスッとフェードイン
-                    if last_move_time.elapsed() >= Duration::from_millis(150) {
+                    // 移動中: 最後の座標変化から 280ms 完全に静止したら定常状態とみなす (debounce)
+                    if last_move_time.elapsed() >= Duration::from_millis(280) {
+                        // 静止確定: 落ち着いた新位置へテレポートさせてから上品にフェードイン
+                        overlay.set_position(overlay_x, overlay_y);
                         overlay.fade_in();
                         is_moving = false;
                     }
-                } else {
-                    overlay.fade_in();
                 }
             } else {
-                overlay.fade_out();
+                if !is_moving {
+                    overlay.fade_out();
+                    is_moving = true;
+                }
+                last_bounds = None;
             }
         } else {
-            overlay.fade_out();
+            if !is_moving {
+                overlay.fade_out();
+                is_moving = true;
+            }
+            last_bounds = None;
         }
 
         std::thread::sleep(Duration::from_millis(16)); // 60fps (16ms) 追従
