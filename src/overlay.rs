@@ -19,6 +19,79 @@ use windows::core::w;
 pub const HUD_WIDTH: u32 = 220;
 pub const HUD_HEIGHT: u32 = 240;
 
+/// 無次元量スケールに基づくデザインシステム・トークン (gui-dimensionless-design スキル準拠)
+#[derive(Debug, Clone, Copy)]
+pub struct DesignTokens {
+    /// 余白基準値 (Base_Space = 1.0)
+    pub base_space: f32,
+    /// 文字基準値 (Base_Text = 1.0)
+    pub base_text: f32,
+}
+
+impl DesignTokens {
+    /// コンパクトHUD用の基準トークン (オーバーレイ密度)
+    pub const HUD_COMPACT: Self = Self {
+        base_space: 8.0,
+        base_text: 11.0,
+    };
+
+    // --- 余白スケール (Spacing Scale: Base_Space 乗数) ---
+    /// 0.25x (Base_Space * 0.25): 極小 (X-Small) - ハブ枠や微細オフセット (2.0px)
+    #[inline]
+    pub fn space_xs(&self) -> f32 {
+        self.base_space * 0.25
+    }
+
+    /// 0.5x (Base_Space * 0.5): 小 (Small) - 構造セット内（見出しと直後要素、パーセントとリセット日時の密着間隔）(4.0px)
+    #[inline]
+    pub fn space_sm(&self) -> f32 {
+        self.base_space * 0.5
+    }
+
+    /// 1.0x (Base_Space * 1.0): 中 (Medium) - 標準パディング (8.0px)
+    #[inline]
+    pub fn space_md(&self) -> f32 {
+        self.base_space * 1.0
+    }
+
+    /// 1.5x (Base_Space * 1.5): 大 (Large) - カード内部余白、ディバイダーと要素間 (12.0px)
+    #[inline]
+    pub fn space_lg(&self) -> f32 {
+        self.base_space * 1.5
+    }
+
+    /// 2.0x (Base_Space * 2.0): 特大 (X-Large) - セクション境界マージン (16.0px)
+    #[inline]
+    pub fn space_xl(&self) -> f32 {
+        self.base_space * 2.0
+    }
+
+    // --- タイポグラフィ・スケール (Typography Scale: Base_Text 乗数) ---
+    /// H2 (1.09x = 12.0px): セクション見出し (GEMINI MODELS, CLAUDE & GPT)
+    #[inline]
+    pub fn font_h2(&self) -> f32 {
+        self.base_text * (12.0 / 11.0)
+    }
+
+    /// Caption/Label (1.0x = 11.0px): メーター上ラベル (Weekly Limit, 5-Hour Burst)
+    #[inline]
+    pub fn font_label(&self) -> f32 {
+        self.base_text * 1.0
+    }
+
+    /// Body (1.05x ≒ 11.5px): パーセント数値 (78%, 100%)
+    #[inline]
+    pub fn font_body(&self) -> f32 {
+        self.base_text * (11.5 / 11.0)
+    }
+
+    /// Caption (0.77x ≒ 8.5px): リセット日時 (10/17 21:32)
+    #[inline]
+    pub fn font_caption(&self) -> f32 {
+        self.base_text * (8.5 / 11.0)
+    }
+}
+
 #[derive(Debug, Clone, Default)]
 pub struct GroupQuota {
     pub weekly_pct: f64,
@@ -322,6 +395,7 @@ fn make_arc_path(cx: f32, cy: f32, radius: f32, start_deg: f32, sweep_deg: f32) 
 #[allow(clippy::too_many_arguments)]
 fn render_tachometer(
     pixmap: &mut Pixmap,
+    tokens: &DesignTokens,
     cx: f32,
     cy: f32,
     radius: f32,
@@ -333,15 +407,16 @@ fn render_tachometer(
 ) {
     let start_deg = 145.0;
     let sweep_deg = 250.0;
-    let track_width = 4.2;
+    let track_width = tokens.space_sm() + (tokens.space_xs() * 0.1); // 4.2px
 
-    // 1. メーター上部ラベル (メーター円弧との明確な空間を確保: 25px, 11.0px)
+    // 1. メーター上部ラベル (メーター円弧との空間: tokens.space_xl() + tokens.space_md() + tokens.space_xs() * 0.5 = 25.0px)
+    let label_offset = tokens.space_xl() + tokens.space_md() + (tokens.space_xs() * 0.5);
     draw_text(
         pixmap,
         label,
         cx,
-        cy - radius - 25.0,
-        11.0,
+        cy - radius - label_offset,
+        tokens.font_label(),
         Color::from_rgba8(225, 232, 245, 250), // 鮮明な高コントラストオフホワイト
         true,
         Weight::MEDIUM,
@@ -378,13 +453,13 @@ fn render_tachometer(
 
     // 4. スポーティな指針 (テーパー針)
     let needle_angle = (start_deg + sweep_deg * (pct / 100.0) as f32).to_radians();
-    let needle_len = radius - 3.5;
+    let needle_len = radius - (tokens.space_sm() - tokens.space_xs() * 0.25); // radius - 3.5
 
     let tip_x = cx + needle_len * needle_angle.cos();
     let tip_y = cy + needle_len * needle_angle.sin();
 
     let perp_angle = needle_angle + std::f32::consts::FRAC_PI_2;
-    let base_r = 2.4;
+    let base_r = tokens.space_xs() * 1.2; // 2.4px
     let b1_x = cx + base_r * perp_angle.cos();
     let b1_y = cy + base_r * perp_angle.sin();
     let b2_x = cx - base_r * perp_angle.cos();
@@ -410,7 +485,8 @@ fn render_tachometer(
     }
 
     // 5. センターハブ (円形)
-    if let Some(hub_outer) = PathBuilder::from_circle(cx, cy, 4.0) {
+    let hub_r = tokens.space_sm(); // 4.0px
+    if let Some(hub_outer) = PathBuilder::from_circle(cx, cy, hub_r) {
         let mut paint = Paint::default();
         paint.set_color_rgba8(26, 30, 38, 255);
         paint.anti_alias = true;
@@ -423,7 +499,7 @@ fn render_tachometer(
         );
 
         let stroke = Stroke {
-            width: 1.2,
+            width: tokens.space_xs() * 0.6, // 1.2px
             ..Default::default()
         };
         let mut border_paint = Paint::default();
@@ -438,26 +514,28 @@ fn render_tachometer(
         );
     }
 
-    // 6. パーセント値 (元の落ち着いたサイズ 11.5px, 力強い太字)
+    // 6. パーセント値 (Base_Text * 1.05 = 11.5px, 力強い太字)
+    let val_y_offset = tokens.space_sm() * 1.375; // 5.5px
     draw_text(
         pixmap,
         val_text,
         cx,
-        cy + 5.5,
-        11.5,
+        cy + val_y_offset,
+        tokens.font_body(),
         theme_color,
         true,
         Weight::BOLD,
     );
 
-    // 7. リセット日時 (パーセント値の直下に控えめかつクリアに配置)
+    // 7. リセット日時 (パーセント値直下の小余白: space_xl + space_sm = 20.0px, 8.5px)
     if let Some(reset) = reset_text {
+        let reset_y_offset = tokens.space_xl() + tokens.space_sm(); // 20.0px
         draw_text(
             pixmap,
             reset,
             cx,
-            cy + 20.0,
-            8.5,
+            cy + reset_y_offset,
+            tokens.font_caption(),
             Color::from_rgba8(160, 174, 192, 240), // 視認性の高いスレートグレー (#a0aec0)
             true,
             Weight::MEDIUM,
@@ -478,10 +556,11 @@ fn get_quota_color(pct: f64) -> Color {
 /// HUD 全体の描画
 fn render_hud(pixmap: &mut Pixmap) {
     let data = GLOBAL_DATA.lock().unwrap().clone().unwrap_or_default();
+    let tokens = DesignTokens::HUD_COMPACT;
 
     let w = HUD_WIDTH as f32;
     let h = HUD_HEIGHT as f32;
-    let r = 12.0;
+    let r = tokens.space_lg(); // 12.0px
 
     // 角丸カードのパス
     let mut pb = PathBuilder::new();
@@ -526,31 +605,34 @@ fn render_hud(pixmap: &mut Pixmap) {
         );
     }
 
-    // メーターの X 座標: HUD 幅 220px に対して左右を心地よく配置（間隔 92px）
-    let left_cx = 64.0;
-    let right_cx = 156.0;
-    let meter_r = 19.5;
+    // メーターの X 座標: HUD 幅 220px に対してトークン基準で配置 (left=64px, right=156px)
+    let left_cx = tokens.base_space * 8.0;
+    let right_cx = tokens.base_space * 19.5;
+    let meter_r = tokens.base_space * 2.4375; // 19.5px
 
     // ==========================================
-    // 上段: GEMINI MODELS (中央見出し + 適切な余白, 12.0px)
+    // 上段: GEMINI MODELS (中央見出し + 適切な余白, tokens.font_h2())
     // ==========================================
+    let top_heading_y = tokens.space_lg(); // 12.0px
     draw_text(
         pixmap,
         "GEMINI MODELS",
         w / 2.0,
-        12.0,
-        12.0,
+        top_heading_y,
+        tokens.font_h2(),
         Color::from_rgba8(96, 165, 250, 255), // 高視認性 Google Blue (#60a5fa)
         true,
         Weight::SEMIBOLD,
     );
 
+    let top_meter_cy = tokens.base_space * 9.25; // 74.0px
     let gem_weekly_color = get_quota_color(data.gemini.weekly_pct);
     let gem_weekly_val = format!("{:.0}%", data.gemini.weekly_pct);
     render_tachometer(
         pixmap,
+        &tokens,
         left_cx,
-        74.0,
+        top_meter_cy,
         meter_r,
         data.gemini.weekly_pct,
         "Weekly Limit",
@@ -563,8 +645,9 @@ fn render_hud(pixmap: &mut Pixmap) {
     let gem_5h_val = format!("{:.0}%", data.gemini.five_h_pct);
     render_tachometer(
         pixmap,
+        &tokens,
         right_cx,
-        74.0,
+        top_meter_cy,
         meter_r,
         data.gemini.five_h_pct,
         "5-Hour Burst",
@@ -574,11 +657,13 @@ fn render_hud(pixmap: &mut Pixmap) {
     );
 
     // ==========================================
-    // 水平ディバイダーライン
+    // 水平ディバイダーライン (セクション境界: tokens.space_xl() * 1.125 考慮)
     // ==========================================
+    let sep_y = tokens.base_space * 14.875; // 119.0px
+    let sep_margin = tokens.space_xl() + (tokens.space_xs() * 1.0); // 18.0px
     let mut sep_pb = PathBuilder::new();
-    sep_pb.move_to(18.0, 119.0);
-    sep_pb.line_to(w - 18.0, 119.0);
+    sep_pb.move_to(sep_margin, sep_y);
+    sep_pb.line_to(w - sep_margin, sep_y);
     if let Some(sep_path) = sep_pb.finish() {
         let mut sep_paint = Paint::default();
         sep_paint.set_color_rgba8(55, 65, 80, 120);
@@ -591,25 +676,28 @@ fn render_hud(pixmap: &mut Pixmap) {
     }
 
     // ==========================================
-    // 下段: CLAUDE & GPT (中央見出し + 適切な余白, 12.0px)
+    // 下段: CLAUDE & GPT (中央見出し + 適切な余白, tokens.font_h2())
     // ==========================================
+    let bottom_heading_y = sep_y + tokens.space_lg() + (tokens.space_xs() * 0.5); // 132.0px
     draw_text(
         pixmap,
         "CLAUDE & GPT",
         w / 2.0,
-        132.0,
-        12.0,
+        bottom_heading_y,
+        tokens.font_h2(),
         Color::from_rgba8(251, 191, 36, 255), // 高視認性 Warm Amber (#fbbf24)
         true,
         Weight::SEMIBOLD,
     );
 
+    let bottom_meter_cy = tokens.base_space * 24.25; // 194.0px
     let cg_weekly_color = get_quota_color(data.claude_gpt.weekly_pct);
     let cg_weekly_val = format!("{:.0}%", data.claude_gpt.weekly_pct);
     render_tachometer(
         pixmap,
+        &tokens,
         left_cx,
-        194.0,
+        bottom_meter_cy,
         meter_r,
         data.claude_gpt.weekly_pct,
         "Weekly Limit",
@@ -622,8 +710,9 @@ fn render_hud(pixmap: &mut Pixmap) {
     let cg_5h_val = format!("{:.0}%", data.claude_gpt.five_h_pct);
     render_tachometer(
         pixmap,
+        &tokens,
         right_cx,
-        194.0,
+        bottom_meter_cy,
         meter_r,
         data.claude_gpt.five_h_pct,
         "5-Hour Burst",
@@ -764,5 +853,42 @@ mod tests {
         pixmap
             .save_png(out_path)
             .expect("Failed to save render test PNG");
+    }
+
+    #[test]
+    fn test_dimensionless_tokens_hierarchy_and_scales() {
+        let tokens = DesignTokens::HUD_COMPACT;
+
+        // 1. Spacing 階層の厳格検証 (近接の原則・ゲシュタルト崩壊の防止)
+        assert!(
+            tokens.space_xl() > tokens.space_lg(),
+            "XL (セクション境界) は LG (カード余白) より広くなければならない"
+        );
+        assert!(
+            tokens.space_lg() > tokens.space_md(),
+            "LG (カード余白) は MD (標準間隔) より広くなければならない"
+        );
+        assert!(
+            tokens.space_md() > tokens.space_sm(),
+            "MD (標準間隔) は SM (構造セット内) より広くなければならない"
+        );
+        assert!(
+            tokens.space_sm() > tokens.space_xs(),
+            "SM (構造セット内) は XS (微細間隔) より広くなければならない"
+        );
+
+        // 2. Typography 階層の検証
+        assert!(
+            tokens.font_h2() > tokens.font_body(),
+            "H2見出し は 本文パーセント値 より大きくなければならない"
+        );
+        assert!(
+            tokens.font_body() >= tokens.font_label(),
+            "本文パーセント値 は ラベルと同等以上の視認性を持たなければならない"
+        );
+        assert!(
+            tokens.font_label() > tokens.font_caption(),
+            "ラベル は 注記リセット日時 より大きくなければならない"
+        );
     }
 }
