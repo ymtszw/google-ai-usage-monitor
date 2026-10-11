@@ -6,7 +6,7 @@ use windows::core::w;
 use windows::Win32::Foundation::{HWND, LPARAM, LRESULT, POINT, SIZE, WPARAM};
 use windows::Win32::Graphics::Gdi::{
     CreateCompatibleDC, CreateDIBSection, DeleteDC, DeleteObject, GetDC, ReleaseDC, SelectObject,
-    BITMAPINFO, BITMAPINFOHEADER, BI_RGB, BLENDFUNCTION, DIB_RGB_COLORS, HBITMAP, HGDIOBJ,
+    BITMAPINFO, BITMAPINFOHEADER, BI_RGB, BLENDFUNCTION, DIB_RGB_COLORS, HBITMAP, HDC, HGDIOBJ,
 };
 use windows::Win32::System::LibraryLoader::GetModuleHandleW;
 use windows::Win32::UI::WindowsAndMessaging::{
@@ -38,10 +38,22 @@ pub struct TachometerOverlay {
     pub hwnd: HWND,
 }
 
+struct CachedSurface {
+    screen_dc: HDC,
+    mem_dc: HDC,
+    hbitmap: HBITMAP,
+    old_bmp: HGDIOBJ,
+    bits: *mut u8,
+}
+
+unsafe impl Send for CachedSurface {}
+unsafe impl Sync for CachedSurface {}
+
 static CURRENT_ALPHA: AtomicI32 = AtomicI32::new(0);
 static TARGET_ALPHA: AtomicI32 = AtomicI32::new(220); // 洗練された透過感 (約86%)
 static GLOBAL_DATA: Mutex<Option<GaugeData>> = Mutex::new(None);
 static FONT_SYSTEM: Mutex<Option<(FontSystem, SwashCache)>> = Mutex::new(None);
+static SURFACE_CACHE: Mutex<Option<CachedSurface>> = Mutex::new(None);
 
 unsafe extern "system" fn wnd_proc(
     hwnd: HWND,
@@ -56,27 +68,45 @@ unsafe extern "system" fn wnd_proc(
                 let target = TARGET_ALPHA.load(Ordering::SeqCst);
 
                 if cur != target {
-                    let step = if cur < target {
-                        ((target - cur) / 2).max(35)
+                    let next = if cur < target {
+                        // フェードイン: 滑らかな ease-out で上品に表示
+                        let diff = target - cur;
+                        let step = ((diff as f32 * 0.25).ceil() as i32).clamp(6, 22);
+                        (cur + step).min(target)
                     } else {
-                        ((cur - target) / 2).max(45) * -1
+                        // フェードアウト: 移動開始時は素早く、しかし 1 フレームで飛ばずにスムーズに減衰
+                        let diff = cur - target;
+                        let step = ((diff as f32 * 0.35).ceil() as i32).clamp(14, 38);
+                        (cur - step).max(target)
                     };
-                    let next = (cur + step).clamp(0, 255);
+
                     CURRENT_ALPHA.store(next, Ordering::SeqCst);
 
                     if next == 0 {
-                        unsafe { let _ = ShowWindow(hwnd, SW_HIDE); }
+                        unsafe {
+                            let _ = ShowWindow(hwnd, SW_HIDE);
+                        }
                     } else {
                         unsafe {
                             let _ = ShowWindow(hwnd, SW_SHOWNOACTIVATE);
                         }
-                        update_layered_surface(hwnd, next as u8);
+                        update_layered_alpha(hwnd, next as u8);
                     }
                 }
             }
             LRESULT(0)
         }
         WM_DESTROY => {
+            if let Ok(mut lock) = SURFACE_CACHE.lock() {
+                if let Some(surf) = lock.take() {
+                    unsafe {
+                        SelectObject(surf.mem_dc, surf.old_bmp);
+                        let _ = DeleteObject(HGDIOBJ(surf.hbitmap.0));
+                        let _ = DeleteDC(surf.mem_dc);
+                        let _ = ReleaseDC(None, surf.screen_dc);
+                    }
+                }
+            }
             unsafe {
                 PostQuitMessage(0);
             }
@@ -86,46 +116,104 @@ unsafe extern "system" fn wnd_proc(
     }
 }
 
-/// UpdateLayeredWindow により、1ピクセル単位の真正アルファブレンド（角丸透過）を適用
-fn update_layered_surface(hwnd: HWND, alpha: u8) {
+/// DIBSection キャッシュを取得または初期化してクロージャを実行
+fn with_surface<F, R>(f: F) -> R
+where
+    F: FnOnce(&CachedSurface) -> R,
+{
+    let mut cache = SURFACE_CACHE.lock().unwrap();
+    if cache.is_none() {
+        unsafe {
+            let screen_dc = GetDC(None);
+            let mem_dc = CreateCompatibleDC(Some(screen_dc));
+
+            let bmi = BITMAPINFO {
+                bmiHeader: BITMAPINFOHEADER {
+                    biSize: std::mem::size_of::<BITMAPINFOHEADER>() as u32,
+                    biWidth: HUD_WIDTH as i32,
+                    biHeight: -(HUD_HEIGHT as i32), // トップダウン
+                    biPlanes: 1,
+                    biBitCount: 32,
+                    biCompression: BI_RGB.0,
+                    ..Default::default()
+                },
+                ..Default::default()
+            };
+
+            let mut bits: *mut std::ffi::c_void = std::ptr::null_mut();
+            let hbitmap: HBITMAP = CreateDIBSection(
+                Some(mem_dc),
+                &bmi,
+                DIB_RGB_COLORS,
+                &mut bits,
+                None,
+                0,
+            )
+            .unwrap();
+
+            let old_bmp = SelectObject(mem_dc, HGDIOBJ(hbitmap.0));
+
+            *cache = Some(CachedSurface {
+                screen_dc,
+                mem_dc,
+                hbitmap,
+                old_bmp,
+                bits: bits as *mut u8,
+            });
+        }
+    }
+    f(cache.as_ref().unwrap())
+}
+
+/// GPU合成（UpdateLayeredWindow）のみを呼び出し、アルファ値（透明度）を瞬時に更新
+fn apply_layered_alpha(hwnd: HWND, surf: &CachedSurface, alpha: u8) {
+    let mut pt_src = POINT { x: 0, y: 0 };
+    let mut size_wnd = SIZE {
+        cx: HUD_WIDTH as i32,
+        cy: HUD_HEIGHT as i32,
+    };
+    let blend = BLENDFUNCTION {
+        BlendOp: 0, // AC_SRC_OVER
+        BlendFlags: 0,
+        SourceConstantAlpha: alpha,
+        AlphaFormat: 1, // AC_SRC_ALPHA
+    };
+
+    unsafe {
+        let _ = UpdateLayeredWindow(
+            hwnd,
+            Some(surf.screen_dc),
+            None,
+            Some(&mut size_wnd),
+            Some(surf.mem_dc),
+            Some(&mut pt_src),
+            windows::Win32::Foundation::COLORREF(0),
+            Some(&blend),
+            ULW_ALPHA,
+        );
+    }
+}
+
+/// アニメーション中のアルファ更新（ビットマップ再生成なしで 0ms 高速更新）
+fn update_layered_alpha(hwnd: HWND, alpha: u8) {
+    with_surface(|surf| {
+        apply_layered_alpha(hwnd, surf, alpha);
+    });
+}
+
+/// クォータデータ更新時などにグラフィックスをオフスクリーンDIBに再描画
+fn render_to_surface(hwnd: HWND, alpha: u8) {
     let mut pixmap = Pixmap::new(HUD_WIDTH, HUD_HEIGHT).unwrap();
-    // 背景は完全に透明(0, 0, 0, 0)から開始
     pixmap.fill(Color::TRANSPARENT);
 
     render_hud(&mut pixmap);
 
-    unsafe {
-        let screen_dc = GetDC(None);
-        let mem_dc = CreateCompatibleDC(Some(screen_dc));
-
-        let bmi = BITMAPINFO {
-            bmiHeader: BITMAPINFOHEADER {
-                biSize: std::mem::size_of::<BITMAPINFOHEADER>() as u32,
-                biWidth: HUD_WIDTH as i32,
-                biHeight: -(HUD_HEIGHT as i32), // トップダウン
-                biPlanes: 1,
-                biBitCount: 32,
-                biCompression: BI_RGB.0,
-                ..Default::default()
-            },
-            ..Default::default()
-        };
-
-        let mut bits: *mut std::ffi::c_void = std::ptr::null_mut();
-        let hbitmap: HBITMAP = CreateDIBSection(
-            Some(mem_dc),
-            &bmi,
-            DIB_RGB_COLORS,
-            &mut bits,
-            None,
-            0,
-        ).unwrap();
-
-        let old_bmp = SelectObject(mem_dc, HGDIOBJ(hbitmap.0));
-
-        // tiny-skia は Premultiplied RGBA なので、そのまま BGRA に変換して DIB メモリへコピー
+    with_surface(|surf| unsafe {
         let src_slice = pixmap.data();
-        let dst_slice = std::slice::from_raw_parts_mut(bits as *mut u8, (HUD_WIDTH * HUD_HEIGHT * 4) as usize);
+        let dst_slice = std::slice::from_raw_parts_mut(
+            surf.bits,
+            (HUD_WIDTH * HUD_HEIGHT * 4) as usize,
+        );
 
         for (src_chunk, dst_chunk) in src_slice.chunks_exact(4).zip(dst_slice.chunks_exact_mut(4)) {
             let r = src_chunk[0];
@@ -139,35 +227,8 @@ fn update_layered_surface(hwnd: HWND, alpha: u8) {
             dst_chunk[3] = a;
         }
 
-        let mut pt_src = POINT { x: 0, y: 0 };
-        let mut size_wnd = SIZE {
-            cx: HUD_WIDTH as i32,
-            cy: HUD_HEIGHT as i32,
-        };
-        let blend = BLENDFUNCTION {
-            BlendOp: 0, // AC_SRC_OVER
-            BlendFlags: 0,
-            SourceConstantAlpha: alpha,
-            AlphaFormat: 1, // AC_SRC_ALPHA
-        };
-
-        let _ = UpdateLayeredWindow(
-            hwnd,
-            Some(screen_dc),
-            None,
-            Some(&mut size_wnd),
-            Some(mem_dc),
-            Some(&mut pt_src),
-            windows::Win32::Foundation::COLORREF(0),
-            Some(&blend),
-            ULW_ALPHA,
-        );
-
-        SelectObject(mem_dc, old_bmp);
-        let _ = DeleteObject(HGDIOBJ(hbitmap.0));
-        let _ = DeleteDC(mem_dc);
-        let _ = ReleaseDC(None, screen_dc);
-    }
+        apply_layered_alpha(hwnd, surf, alpha);
+    });
 }
 
 /// 高品位テキスト描画ヘルパー
@@ -498,7 +559,10 @@ impl TachometerOverlay {
             // 16ms = 60fps
             SetTimer(Some(hwnd), 1, 16, None);
 
-            Ok(Self { hwnd })
+            let overlay = Self { hwnd };
+            render_to_surface(hwnd, 0);
+
+            Ok(overlay)
         }
     }
 
@@ -507,9 +571,7 @@ impl TachometerOverlay {
             *lock = Some(new_data);
         }
         let alpha = CURRENT_ALPHA.load(Ordering::SeqCst);
-        if alpha > 0 {
-            update_layered_surface(self.hwnd, alpha as u8);
-        }
+        render_to_surface(self.hwnd, alpha.max(0) as u8);
     }
 
     pub fn fade_in(&self) {
