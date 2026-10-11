@@ -1,7 +1,7 @@
 use std::sync::atomic::{AtomicIsize, Ordering};
 use windows::Win32::Foundation::{HWND, LPARAM, RECT};
 use windows::Win32::System::Diagnostics::ToolHelp::{
-    CreateToolhelp32Snapshot, Process32FirstW, Process32NextW, PROCESSENTRY32W, TH32CS_SNAPPROCESS,
+    CreateToolhelp32Snapshot, PROCESSENTRY32W, Process32FirstW, Process32NextW, TH32CS_SNAPPROCESS,
 };
 use windows::Win32::UI::WindowsAndMessaging::{
     EnumWindows, GetWindowRect, GetWindowThreadProcessId, IsIconic, IsWindowVisible,
@@ -18,8 +18,6 @@ pub struct WindowBounds {
     pub width: i32,
     pub height: i32,
 }
-
-
 
 /// Antigravity.exe のプロセスID一覧を取得
 fn get_antigravity_pids() -> Vec<u32> {
@@ -92,13 +90,10 @@ pub fn find_antigravity_window() -> Option<HWND> {
     let param = (pids, &mut found_hwnd as *mut HWND);
 
     unsafe {
-        let _ = EnumWindows(
-            Some(enum_windows_proc),
-            LPARAM(&param as *const _ as isize),
-        );
+        let _ = EnumWindows(Some(enum_windows_proc), LPARAM(&param as *const _ as isize));
     }
 
-    if found_hwnd.0 != std::ptr::null_mut() {
+    if !found_hwnd.0.is_null() {
         TARGET_HWND.store(found_hwnd.0 as isize, Ordering::SeqCst);
         Some(found_hwnd)
     } else {
@@ -130,5 +125,3 @@ pub fn get_target_bounds(hwnd: HWND) -> Option<WindowBounds> {
     }
     None
 }
-
-

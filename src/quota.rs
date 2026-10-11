@@ -8,7 +8,7 @@ use windows::Win32::NetworkManagement::IpHelper::{
 use windows::Win32::Networking::WinSock::AF_INET;
 use windows::Win32::System::Diagnostics::Debug::ReadProcessMemory;
 use windows::Win32::System::Diagnostics::ToolHelp::{
-    CreateToolhelp32Snapshot, Process32FirstW, Process32NextW, PROCESSENTRY32W, TH32CS_SNAPPROCESS,
+    CreateToolhelp32Snapshot, PROCESSENTRY32W, Process32FirstW, Process32NextW, TH32CS_SNAPPROCESS,
 };
 use windows::Win32::System::Threading::{OpenProcess, PROCESS_QUERY_INFORMATION, PROCESS_VM_READ};
 
@@ -169,13 +169,11 @@ pub fn find_language_server_info() -> Option<(u32, String)> {
 
                 if name.eq_ignore_ascii_case("language_server.exe") {
                     let pid = entry.th32ProcessID;
-                    if let Some(cmd) = get_process_command_line(pid) {
-                        if let Some(caps) = re_csrf.captures(&cmd) {
-                            if let Some(csrf) = caps.get(1) {
-                                let _ = CloseHandle(snapshot);
-                                return Some((pid, csrf.as_str().to_string()));
-                            }
-                        }
+                    if let Some(cmd) = get_process_command_line(pid)
+                        && let Some(csrf) = re_csrf.captures(&cmd).and_then(|caps| caps.get(1))
+                    {
+                        let _ = CloseHandle(snapshot);
+                        return Some((pid, csrf.as_str().to_string()));
                     }
                 }
 
@@ -220,7 +218,8 @@ pub fn get_listening_ports_for_pid(target_pid: u32) -> Vec<u16> {
 
         if res == 0 {
             let table = &*(buffer.as_ptr() as *const MIB_TCPTABLE_OWNER_PID);
-            let entries = std::slice::from_raw_parts(table.table.as_ptr(), table.dwNumEntries as usize);
+            let entries =
+                std::slice::from_raw_parts(table.table.as_ptr(), table.dwNumEntries as usize);
 
             for entry in entries {
                 if entry.dwOwningPid == target_pid && entry.dwState == 2 {
@@ -243,7 +242,10 @@ pub fn fetch_quota() -> Result<AntigravityQuota, String> {
 
     let ports = get_listening_ports_for_pid(pid);
     if ports.is_empty() {
-        return Err(format!("プロセス (PID: {}) のリッスンポートが見つかりませんでした。", pid));
+        return Err(format!(
+            "プロセス (PID: {}) のリッスンポートが見つかりませんでした。",
+            pid
+        ));
     }
 
     let client = reqwest::blocking::Client::builder()
@@ -264,16 +266,16 @@ pub fn fetch_quota() -> Result<AntigravityQuota, String> {
             .body("{}")
             .send();
 
-        if let Ok(resp) = res {
-            if resp.status().is_success() {
-                if let Ok(wrapper) = resp.json::<QuotaResponseWrapper>() {
-                    return Ok(AntigravityQuota {
-                        process_id: pid,
-                        port,
-                        groups: wrapper.response.groups,
-                    });
-                }
-            }
+        if let Ok(resp) = res
+            && let Ok(wrapper) = resp
+                .error_for_status()
+                .and_then(|r| r.json::<QuotaResponseWrapper>())
+        {
+            return Ok(AntigravityQuota {
+                process_id: pid,
+                port,
+                groups: wrapper.response.groups,
+            });
         }
     }
 
