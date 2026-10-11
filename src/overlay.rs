@@ -1,20 +1,20 @@
 use cosmic_text::{Attrs, Color as CColor, FontSystem, Metrics, Shaping, SwashCache};
-use std::sync::atomic::{AtomicI32, Ordering};
 use std::sync::Mutex;
+use std::sync::atomic::{AtomicI32, Ordering};
 use tiny_skia::*;
-use windows::core::w;
 use windows::Win32::Foundation::{HWND, LPARAM, LRESULT, POINT, SIZE, WPARAM};
 use windows::Win32::Graphics::Gdi::{
-    CreateCompatibleDC, CreateDIBSection, DeleteDC, DeleteObject, GetDC, ReleaseDC, SelectObject,
-    BITMAPINFO, BITMAPINFOHEADER, BI_RGB, BLENDFUNCTION, DIB_RGB_COLORS, HBITMAP, HDC, HGDIOBJ,
+    BI_RGB, BITMAPINFO, BITMAPINFOHEADER, BLENDFUNCTION, CreateCompatibleDC, CreateDIBSection,
+    DIB_RGB_COLORS, DeleteDC, DeleteObject, GetDC, HBITMAP, HDC, HGDIOBJ, ReleaseDC, SelectObject,
 };
 use windows::Win32::System::LibraryLoader::GetModuleHandleW;
 use windows::Win32::UI::WindowsAndMessaging::{
-    CreateWindowExW, DefWindowProcW, PostQuitMessage, RegisterClassExW, SetTimer,
-    SetWindowPos, ShowWindow, UpdateLayeredWindow, HICON, HMENU, SWP_NOACTIVATE, SWP_NOSIZE,
-    SWP_NOZORDER, SW_HIDE, SW_SHOWNOACTIVATE, ULW_ALPHA, WM_DESTROY, WM_TIMER,
-    WNDCLASSEXW, WS_EX_LAYERED, WS_EX_TOOLWINDOW, WS_EX_TOPMOST, WS_POPUP,
+    CreateWindowExW, DefWindowProcW, HICON, HMENU, PostQuitMessage, RegisterClassExW, SW_HIDE,
+    SW_SHOWNOACTIVATE, SWP_NOACTIVATE, SWP_NOSIZE, SWP_NOZORDER, SetTimer, SetWindowPos,
+    ShowWindow, ULW_ALPHA, UpdateLayeredWindow, WM_DESTROY, WM_TIMER, WNDCLASSEXW, WS_EX_LAYERED,
+    WS_EX_TOOLWINDOW, WS_EX_TOPMOST, WS_POPUP,
 };
+use windows::core::w;
 
 pub const HUD_WIDTH: u32 = 320;
 pub const HUD_HEIGHT: u32 = 115;
@@ -97,14 +97,12 @@ unsafe extern "system" fn wnd_proc(
             LRESULT(0)
         }
         WM_DESTROY => {
-            if let Ok(mut lock) = SURFACE_CACHE.lock() {
-                if let Some(surf) = lock.take() {
-                    unsafe {
-                        SelectObject(surf.mem_dc, surf.old_bmp);
-                        let _ = DeleteObject(HGDIOBJ(surf.hbitmap.0));
-                        let _ = DeleteDC(surf.mem_dc);
-                        let _ = ReleaseDC(None, surf.screen_dc);
-                    }
+            if let Some(surf) = SURFACE_CACHE.lock().ok().and_then(|mut l| l.take()) {
+                unsafe {
+                    SelectObject(surf.mem_dc, surf.old_bmp);
+                    let _ = DeleteObject(HGDIOBJ(surf.hbitmap.0));
+                    let _ = DeleteDC(surf.mem_dc);
+                    let _ = ReleaseDC(None, surf.screen_dc);
                 }
             }
             unsafe {
@@ -141,15 +139,8 @@ where
             };
 
             let mut bits: *mut std::ffi::c_void = std::ptr::null_mut();
-            let hbitmap: HBITMAP = CreateDIBSection(
-                Some(mem_dc),
-                &bmi,
-                DIB_RGB_COLORS,
-                &mut bits,
-                None,
-                0,
-            )
-            .unwrap();
+            let hbitmap: HBITMAP =
+                CreateDIBSection(Some(mem_dc), &bmi, DIB_RGB_COLORS, &mut bits, None, 0).unwrap();
 
             let old_bmp = SelectObject(mem_dc, HGDIOBJ(hbitmap.0));
 
@@ -167,8 +158,8 @@ where
 
 /// GPU合成（UpdateLayeredWindow）のみを呼び出し、アルファ値（透明度）を瞬時に更新
 fn apply_layered_alpha(hwnd: HWND, surf: &CachedSurface, alpha: u8) {
-    let mut pt_src = POINT { x: 0, y: 0 };
-    let mut size_wnd = SIZE {
+    let pt_src = POINT { x: 0, y: 0 };
+    let size_wnd = SIZE {
         cx: HUD_WIDTH as i32,
         cy: HUD_HEIGHT as i32,
     };
@@ -184,9 +175,9 @@ fn apply_layered_alpha(hwnd: HWND, surf: &CachedSurface, alpha: u8) {
             hwnd,
             Some(surf.screen_dc),
             None,
-            Some(&mut size_wnd),
+            Some(&size_wnd),
             Some(surf.mem_dc),
-            Some(&mut pt_src),
+            Some(&pt_src),
             windows::Win32::Foundation::COLORREF(0),
             Some(&blend),
             ULW_ALPHA,
@@ -202,6 +193,7 @@ fn update_layered_alpha(hwnd: HWND, alpha: u8) {
 }
 
 /// クォータデータ更新時などにグラフィックスをオフスクリーンDIBに再描画
+#[allow(clippy::chunks_exact_to_as_chunks)]
 fn render_to_surface(hwnd: HWND, alpha: u8) {
     let mut pixmap = Pixmap::new(HUD_WIDTH, HUD_HEIGHT).unwrap();
     pixmap.fill(Color::TRANSPARENT);
@@ -210,10 +202,8 @@ fn render_to_surface(hwnd: HWND, alpha: u8) {
 
     with_surface(|surf| unsafe {
         let src_slice = pixmap.data();
-        let dst_slice = std::slice::from_raw_parts_mut(
-            surf.bits,
-            (HUD_WIDTH * HUD_HEIGHT * 4) as usize,
-        );
+        let dst_slice =
+            std::slice::from_raw_parts_mut(surf.bits, (HUD_WIDTH * HUD_HEIGHT * 4) as usize);
 
         for (src_chunk, dst_chunk) in src_slice.chunks_exact(4).zip(dst_slice.chunks_exact_mut(4)) {
             let r = src_chunk[0];
@@ -244,10 +234,8 @@ fn draw_text(
     let mut lock = FONT_SYSTEM.lock().unwrap();
     let (font_system, cache) = lock.as_mut().unwrap();
 
-    let mut buffer = cosmic_text::Buffer::new(
-        font_system,
-        Metrics::new(font_size, font_size * 1.2),
-    );
+    let mut buffer =
+        cosmic_text::Buffer::new(font_system, Metrics::new(font_size, font_size * 1.2));
     let mut buffer = buffer.borrow_with(font_system);
     buffer.set_size(Some(200.0), Some(50.0));
     buffer.set_text(text, &Attrs::new(), Shaping::Advanced, None);
@@ -261,28 +249,33 @@ fn draw_text(
     let g_u8 = (color.green() * 255.0) as u8;
     let b_u8 = (color.blue() * 255.0) as u8;
 
-    buffer.draw(cache, CColor::rgba(r_u8, g_u8, b_u8, alpha_u8), |gx, gy, _w, _h, col| {
-        let px = (offset_x + gx as f32).round() as i32;
-        let py = (y + gy as f32).round() as i32;
+    buffer.draw(
+        cache,
+        CColor::rgba(r_u8, g_u8, b_u8, alpha_u8),
+        |gx, gy, _w, _h, col| {
+            let px = (offset_x + gx as f32).round() as i32;
+            let py = (y + gy as f32).round() as i32;
 
-        if px >= 0 && px < HUD_WIDTH as i32 && py >= 0 && py < HUD_HEIGHT as i32 {
-            let idx = (py as usize * HUD_WIDTH as usize + px as usize) * 4;
-            let data = pixmap.data_mut();
+            if px >= 0 && px < HUD_WIDTH as i32 && py >= 0 && py < HUD_HEIGHT as i32 {
+                let idx = (py as usize * HUD_WIDTH as usize + px as usize) * 4;
+                let data = pixmap.data_mut();
 
-            let a = col.a() as f32 / 255.0;
-            let inv_a = 1.0 - a;
+                let a = col.a() as f32 / 255.0;
+                let inv_a = 1.0 - a;
 
-            // Premultiplied alpha 合成
-            let src_r = col.r() as f32 * a;
-            let src_g = col.g() as f32 * a;
-            let src_b = col.b() as f32 * a;
+                // Premultiplied alpha 合成
+                let src_r = col.r() as f32 * a;
+                let src_g = col.g() as f32 * a;
+                let src_b = col.b() as f32 * a;
 
-            data[idx + 0] = (src_r + (data[idx + 0] as f32 * inv_a)).min(255.0) as u8;
-            data[idx + 1] = (src_g + (data[idx + 1] as f32 * inv_a)).min(255.0) as u8;
-            data[idx + 2] = (src_b + (data[idx + 2] as f32 * inv_a)).min(255.0) as u8;
-            data[idx + 3] = ((col.a() as f32) + (data[idx + 3] as f32 * inv_a)).min(255.0) as u8;
-        }
-    });
+                data[idx] = (src_r + (data[idx] as f32 * inv_a)).min(255.0) as u8;
+                data[idx + 1] = (src_g + (data[idx + 1] as f32 * inv_a)).min(255.0) as u8;
+                data[idx + 2] = (src_b + (data[idx + 2] as f32 * inv_a)).min(255.0) as u8;
+                data[idx + 3] =
+                    ((col.a() as f32) + (data[idx + 3] as f32 * inv_a)).min(255.0) as u8;
+            }
+        },
+    );
 }
 
 fn make_arc_path(cx: f32, cy: f32, radius: f32, start_deg: f32, sweep_deg: f32) -> Option<Path> {
@@ -303,6 +296,7 @@ fn make_arc_path(cx: f32, cy: f32, radius: f32, start_deg: f32, sweep_deg: f32) 
     pb.finish()
 }
 
+#[allow(clippy::too_many_arguments)]
 fn render_tachometer(
     pixmap: &mut Pixmap,
     cx: f32,
@@ -381,7 +375,13 @@ fn render_tachometer(
         let mut paint = Paint::default();
         paint.set_color_rgba8(245, 250, 255, 255);
         paint.anti_alias = true;
-        pixmap.fill_path(&needle_path, &paint, FillRule::Winding, Transform::identity(), None);
+        pixmap.fill_path(
+            &needle_path,
+            &paint,
+            FillRule::Winding,
+            Transform::identity(),
+            None,
+        );
     }
 
     // 5. センターハブ (円形)
@@ -389,7 +389,13 @@ fn render_tachometer(
         let mut paint = Paint::default();
         paint.set_color_rgba8(26, 30, 38, 255);
         paint.anti_alias = true;
-        pixmap.fill_path(&hub_outer, &paint, FillRule::Winding, Transform::identity(), None);
+        pixmap.fill_path(
+            &hub_outer,
+            &paint,
+            FillRule::Winding,
+            Transform::identity(),
+            None,
+        );
 
         let stroke = Stroke {
             width: 1.5,
@@ -398,19 +404,17 @@ fn render_tachometer(
         let mut border_paint = Paint::default();
         border_paint.set_color_rgba8(220, 230, 245, 255);
         border_paint.anti_alias = true;
-        pixmap.stroke_path(&hub_outer, &border_paint, &stroke, Transform::identity(), None);
+        pixmap.stroke_path(
+            &hub_outer,
+            &border_paint,
+            &stroke,
+            Transform::identity(),
+            None,
+        );
     }
 
     // 6. パーセント値 (針の中心ハブから適度な余白を開けて配置)
-    draw_text(
-        pixmap,
-        val_text,
-        cx,
-        cy + 11.0,
-        14.5,
-        theme_color,
-        true,
-    );
+    draw_text(pixmap, val_text, cx, cy + 11.0, 14.5, theme_color, true);
 }
 
 /// HUD 全体の描画
@@ -439,7 +443,13 @@ fn render_hud(pixmap: &mut Pixmap) {
         let mut bg_paint = Paint::default();
         bg_paint.set_color_rgba8(21, 24, 33, 205);
         bg_paint.anti_alias = true;
-        pixmap.fill_path(&panel_path, &bg_paint, FillRule::Winding, Transform::identity(), None);
+        pixmap.fill_path(
+            &panel_path,
+            &bg_paint,
+            FillRule::Winding,
+            Transform::identity(),
+            None,
+        );
 
         // 繊細なアクリル風ハイライトボーダー (角丸に沿って滑らかに)
         let mut border_paint = Paint::default();
@@ -449,7 +459,13 @@ fn render_hud(pixmap: &mut Pixmap) {
             width: 1.0,
             ..Default::default()
         };
-        pixmap.stroke_path(&panel_path, &border_paint, &stroke, Transform::identity(), None);
+        pixmap.stroke_path(
+            &panel_path,
+            &border_paint,
+            &stroke,
+            Transform::identity(),
+            None,
+        );
     }
 
     // メーター1: Gemini Weekly

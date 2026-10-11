@@ -7,7 +7,7 @@ use quota::fetch_quota;
 use std::time::{Duration, Instant};
 use tracker::{find_antigravity_window, get_target_bounds};
 use windows::Win32::UI::WindowsAndMessaging::{
-    DispatchMessageW, PeekMessageW, TranslateMessage, MSG, PM_REMOVE,
+    DispatchMessageW, MSG, PM_REMOVE, PeekMessageW, TranslateMessage,
 };
 
 fn extract_gemini_gauge_data() -> Option<GaugeData> {
