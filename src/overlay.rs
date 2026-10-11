@@ -16,8 +16,8 @@ use windows::Win32::UI::WindowsAndMessaging::{
 };
 use windows::core::w;
 
-pub const HUD_WIDTH: u32 = 310;
-pub const HUD_HEIGHT: u32 = 195;
+pub const HUD_WIDTH: u32 = 250;
+pub const HUD_HEIGHT: u32 = 180;
 
 #[derive(Debug, Clone, Default)]
 pub struct GroupQuota {
@@ -321,15 +321,15 @@ fn render_tachometer(
 ) {
     let start_deg = 145.0;
     let sweep_deg = 250.0;
-    let track_width = 5.0;
+    let track_width = 4.5;
 
-    // 1. ラベル (メーター上部)
+    // 1. ラベル (メーター上部: 十分な上下余白 15px)
     draw_text(
         pixmap,
         label,
         cx,
-        cy - radius - 14.0,
-        10.0,
+        cy - radius - 15.0,
+        9.5,
         Color::from_rgba8(195, 205, 220, 240),
         true,
     );
@@ -365,13 +365,13 @@ fn render_tachometer(
 
     // 4. スポーティな指針 (テーパー針)
     let needle_angle = (start_deg + sweep_deg * (pct / 100.0) as f32).to_radians();
-    let needle_len = radius - 4.0;
+    let needle_len = radius - 3.5;
 
     let tip_x = cx + needle_len * needle_angle.cos();
     let tip_y = cy + needle_len * needle_angle.sin();
 
     let perp_angle = needle_angle + std::f32::consts::FRAC_PI_2;
-    let base_r = 2.5;
+    let base_r = 2.2;
     let b1_x = cx + base_r * perp_angle.cos();
     let b1_y = cy + base_r * perp_angle.sin();
     let b2_x = cx - base_r * perp_angle.cos();
@@ -397,7 +397,7 @@ fn render_tachometer(
     }
 
     // 5. センターハブ (円形)
-    if let Some(hub_outer) = PathBuilder::from_circle(cx, cy, 4.5) {
+    if let Some(hub_outer) = PathBuilder::from_circle(cx, cy, 4.0) {
         let mut paint = Paint::default();
         paint.set_color_rgba8(26, 30, 38, 255);
         paint.anti_alias = true;
@@ -425,8 +425,8 @@ fn render_tachometer(
         );
     }
 
-    // 6. パーセント値
-    draw_text(pixmap, val_text, cx, cy + 8.0, 11.5, theme_color, true);
+    // 6. パーセント値 (針ハブ下部: 7px 余白)
+    draw_text(pixmap, val_text, cx, cy + 7.5, 11.0, theme_color, true);
 }
 
 fn get_quota_color(pct: f64) -> Color {
@@ -490,26 +490,30 @@ fn render_hud(pixmap: &mut Pixmap) {
         );
     }
 
+    let left_cx = 68.0;
+    let right_cx = 182.0;
+    let meter_r = 21.0;
+
     // ==========================================
-    // 上段: GEMINI MODELS
+    // 上段: GEMINI MODELS (中央寄せセクションラベル)
     // ==========================================
     draw_text(
         pixmap,
         "GEMINI MODELS",
-        18.0,
-        10.0,
+        w / 2.0,
+        9.0,
         10.0,
         Color::from_rgba8(77, 170, 252, 240), // Google Cyan
-        false,
+        true,
     );
 
     let gem_weekly_color = get_quota_color(data.gemini.weekly_pct);
     let gem_weekly_val = format!("{:.0}%", data.gemini.weekly_pct);
     render_tachometer(
         pixmap,
-        80.0,
-        54.0,
-        23.0,
+        left_cx,
+        50.0,
+        meter_r,
         data.gemini.weekly_pct,
         "Weekly Limit",
         &gem_weekly_val,
@@ -520,9 +524,9 @@ fn render_hud(pixmap: &mut Pixmap) {
     let gem_5h_val = format!("{:.0}%", data.gemini.five_h_pct);
     render_tachometer(
         pixmap,
-        230.0,
-        54.0,
-        23.0,
+        right_cx,
+        50.0,
+        meter_r,
         data.gemini.five_h_pct,
         "5-Hour Burst",
         &gem_5h_val,
@@ -533,8 +537,8 @@ fn render_hud(pixmap: &mut Pixmap) {
     // 水平ディバイダーライン
     // ==========================================
     let mut sep_pb = PathBuilder::new();
-    sep_pb.move_to(16.0, 97.0);
-    sep_pb.line_to(w - 16.0, 97.0);
+    sep_pb.move_to(20.0, 89.0);
+    sep_pb.line_to(w - 20.0, 89.0);
     if let Some(sep_path) = sep_pb.finish() {
         let mut sep_paint = Paint::default();
         sep_paint.set_color_rgba8(55, 65, 80, 120);
@@ -547,25 +551,25 @@ fn render_hud(pixmap: &mut Pixmap) {
     }
 
     // ==========================================
-    // 下段: CLAUDE & GPT
+    // 下段: CLAUDE & GPT (中央寄せセクションラベル)
     // ==========================================
     draw_text(
         pixmap,
         "CLAUDE & GPT",
-        18.0,
-        107.0,
+        w / 2.0,
+        98.0,
         10.0,
         Color::from_rgba8(245, 158, 11, 240), // Anthropic Amber
-        false,
+        true,
     );
 
     let cg_weekly_color = get_quota_color(data.claude_gpt.weekly_pct);
     let cg_weekly_val = format!("{:.0}%", data.claude_gpt.weekly_pct);
     render_tachometer(
         pixmap,
-        80.0,
-        151.0,
-        23.0,
+        left_cx,
+        139.0,
+        meter_r,
         data.claude_gpt.weekly_pct,
         "Weekly Limit",
         &cg_weekly_val,
@@ -576,9 +580,9 @@ fn render_hud(pixmap: &mut Pixmap) {
     let cg_5h_val = format!("{:.0}%", data.claude_gpt.five_h_pct);
     render_tachometer(
         pixmap,
-        230.0,
-        151.0,
-        23.0,
+        right_cx,
+        139.0,
+        meter_r,
         data.claude_gpt.five_h_pct,
         "5-Hour Burst",
         &cg_5h_val,
