@@ -229,8 +229,8 @@ fn main() {
                             last_move_time = Instant::now();
                         }
                     } else {
-                        // 初回検知時: 新位置へ配置してフェードイン
-                        overlay.set_position(overlay_x, overlay_y);
+                        // 初回検知時: 新位置へ配置し Z-order を同期してフェードイン
+                        overlay.update_position(overlay_x, overlay_y, target);
                         overlay.fade_in();
                     }
 
@@ -248,7 +248,7 @@ fn main() {
                     if is_moving {
                         // 移動中: 最後の座標変化から 200ms 完全に静止したら定常状態とみなす (debounce)
                         if last_move_time.elapsed() >= Duration::from_millis(200) {
-                            overlay.set_position(overlay_x, overlay_y);
+                            overlay.update_position(overlay_x, overlay_y, target);
                             is_moving = false;
                             if !is_mouse_near {
                                 overlay.fade_in();
@@ -259,7 +259,8 @@ fn main() {
                         // マウスが HUD の近くまたは上にある -> 背後UI操作の邪魔にならないよう完全に消す
                         overlay.fade_out();
                     } else {
-                        // 通常時 (静止中かつマウスが離れている) -> フェードイン表示
+                        // 通常時 (静止中かつマウスが離れている) -> Z-order を Antigravity 直上に同期しつつフェードイン表示
+                        overlay.update_position(overlay_x, overlay_y, target);
                         overlay.fade_in();
                         is_hud_shown = true;
                     }

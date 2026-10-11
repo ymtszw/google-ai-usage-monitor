@@ -9,10 +9,11 @@ use windows::Win32::Graphics::Gdi::{
 };
 use windows::Win32::System::LibraryLoader::GetModuleHandleW;
 use windows::Win32::UI::WindowsAndMessaging::{
-    CreateWindowExW, DefWindowProcW, HICON, HMENU, PostQuitMessage, RegisterClassExW, SW_HIDE,
-    SW_SHOWNOACTIVATE, SWP_NOACTIVATE, SWP_NOSIZE, SWP_NOZORDER, SetTimer, SetWindowPos,
-    ShowWindow, ULW_ALPHA, UpdateLayeredWindow, WM_DESTROY, WM_TIMER, WNDCLASSEXW, WS_EX_LAYERED,
-    WS_EX_TOOLWINDOW, WS_EX_TOPMOST, WS_EX_TRANSPARENT, WS_POPUP,
+    CreateWindowExW, DefWindowProcW, GW_HWNDPREV, GWL_EXSTYLE, GetWindow, GetWindowLongW, HICON,
+    HMENU, HWND_TOP, PostQuitMessage, RegisterClassExW, SW_HIDE, SW_SHOWNOACTIVATE, SWP_NOACTIVATE,
+    SWP_NOSIZE, SWP_NOZORDER, SetTimer, SetWindowPos, ShowWindow, ULW_ALPHA, UpdateLayeredWindow,
+    WM_DESTROY, WM_TIMER, WNDCLASSEXW, WS_EX_LAYERED, WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW,
+    WS_EX_TOPMOST, WS_EX_TRANSPARENT, WS_POPUP,
 };
 use windows::core::w;
 
@@ -816,7 +817,7 @@ impl TachometerOverlay {
             RegisterClassExW(&wnd_class);
 
             let hwnd = CreateWindowExW(
-                WS_EX_TOPMOST | WS_EX_TOOLWINDOW | WS_EX_LAYERED | WS_EX_TRANSPARENT,
+                WS_EX_TOOLWINDOW | WS_EX_LAYERED | WS_EX_TRANSPARENT | WS_EX_NOACTIVATE,
                 class_name,
                 w!("Antigravity Quota HUD"),
                 WS_POPUP,
@@ -857,17 +858,49 @@ impl TachometerOverlay {
         TARGET_ALPHA.store(0, Ordering::SeqCst);
     }
 
-    pub fn set_position(&self, x: i32, y: i32) {
+    /// Antigravity ウィンドウの直上にオーバーレイを配置し、Z-order を同期
+    /// 他のアプリ (Steam 等) が Antigravity の上に重なった場合はその背後へ自然に潜り込ませる
+    pub fn update_position(&self, x: i32, y: i32, target_hwnd: HWND) {
         unsafe {
-            let _ = SetWindowPos(
-                self.hwnd,
-                None,
-                x,
-                y,
-                HUD_WIDTH as i32,
-                HUD_HEIGHT as i32,
-                SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE,
-            );
+            // target_hwnd の Z-order 直前 (1つ上) のウィンドウを取得
+            let prev = GetWindow(target_hwnd, GW_HWNDPREV).unwrap_or_default();
+
+            if prev == self.hwnd {
+                // 既に HUD が Antigravity の直上にある場合は Z-order を変更せず位置のみ更新
+                let _ = SetWindowPos(
+                    self.hwnd,
+                    None,
+                    x,
+                    y,
+                    HUD_WIDTH as i32,
+                    HUD_HEIGHT as i32,
+                    SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE,
+                );
+            } else {
+                // prev が Topmost ウィンドウか、存在しない (Antigravity が通常最前面) 場合は HWND_TOP
+                let is_topmost = if !prev.0.is_null() {
+                    let ex_style = GetWindowLongW(prev, GWL_EXSTYLE) as u32;
+                    (ex_style & WS_EX_TOPMOST.0) != 0
+                } else {
+                    false
+                };
+
+                let insert_after = if prev.0.is_null() || is_topmost {
+                    HWND_TOP
+                } else {
+                    prev
+                };
+
+                let _ = SetWindowPos(
+                    self.hwnd,
+                    Some(insert_after),
+                    x,
+                    y,
+                    HUD_WIDTH as i32,
+                    HUD_HEIGHT as i32,
+                    SWP_NOSIZE | SWP_NOACTIVATE,
+                );
+            }
         }
     }
 }
