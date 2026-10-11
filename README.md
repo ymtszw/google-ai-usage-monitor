@@ -89,12 +89,14 @@ cargo fmt --check; cargo clippy --all-targets --all-features; cargo machete; car
 1. **Quota Fetcher (`src/quota.rs`)**:
    - Win32 Toolhelp32Snapshot および PEB コマンドライン直接解析により、実行中の `language_server.exe` から CSRF トークンをセキュアに自動抽出。
    - プロセスのリッスンポート（IPv4 TCP）を特定し、ローカル HTTP Connect-RPC API (`/RetrieveUserQuotaSummary`) から残量パーセンテージを取得。
-2. **Window Tracker (`src/tracker.rs`)**:
-   - `Antigravity.exe` のプロセスツリーを走査してメインウィンドウ（HWND）を特定。
-   - 280ms デバウンスステートマシンにより、ドラッグ操作中の小休止によるフェードインの誤発火やガタつきを完全に防止。
+2. **Window Tracker & Proximity Manager (`src/tracker.rs`, `src/main.rs`)**:
+   - `Antigravity.exe` のプロセスツリーを走査してメインウィンドウ（HWND）を特定し、右下に追従。
+   - 200ms デバウンスステートマシンにより、ドラッグ操作中の小休止によるフェードインの誤発火やガタつきを完全に防止。
+   - **マウス接近自動回避（Mouse Proximity Fade-out）**: HUDの領域またはその近傍（外側 +20px）にマウスカーソルが入ると、背後のUI操作を妨げないよう即座にスッと自動フェードアウトし、マウスが離れると自然に復帰。
 3. **High-DPI Vector HUD Overlay (`src/overlay.rs`)**:
    - `tiny-skia`（2D ソフトウェアベクターラスタライザー）と `cosmic-text`（高品位フォントレンダリング）による滑らかなタコメーター風デザイン。
    - `UpdateLayeredWindow` + 32-bit DIBSection キャッシュを採用し、角丸外側まで 100% 完全透過（Per-pixel Alpha Blending）。
+   - **完全クリックスルー (`WS_EX_TRANSPARENT`)**: HUDが表示されている最中でも、背後にあるエディタやターミナル、ボタンへのマウスクリックやドラッグを一切阻害せず直下に透過。
    - フェード中はベクター再描画を行わず、Windows DWM (Desktop Window Manager) の GPU 合成にアルファ値のみを渡すため、フェード中の CPU 使用率は実質 0%。
 
 ---

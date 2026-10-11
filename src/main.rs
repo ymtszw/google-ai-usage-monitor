@@ -6,8 +6,9 @@ use overlay::{GaugeData, TachometerOverlay};
 use quota::fetch_quota;
 use std::time::{Duration, Instant};
 use tracker::{find_antigravity_window, get_target_bounds};
+use windows::Win32::Foundation::POINT;
 use windows::Win32::UI::WindowsAndMessaging::{
-    DispatchMessageW, MSG, PM_REMOVE, PeekMessageW, TranslateMessage,
+    DispatchMessageW, GetCursorPos, MSG, PM_REMOVE, PeekMessageW, TranslateMessage,
 };
 
 fn extract_gemini_gauge_data() -> Option<GaugeData> {
@@ -105,14 +106,30 @@ fn main() {
 
                 last_bounds = Some(bounds);
 
+                // マウスカーソルが HUD の上または近傍（外側 +20px）にあるか検知
+                let mut cursor_pt = POINT::default();
+                let _ = unsafe { GetCursorPos(&mut cursor_pt) };
+
+                let is_mouse_near = cursor_pt.x >= (overlay_x - 20)
+                    && cursor_pt.x <= (overlay_x + overlay::HUD_WIDTH as i32 + 20)
+                    && cursor_pt.y >= (overlay_y - 20)
+                    && cursor_pt.y <= (overlay_y + overlay::HUD_HEIGHT as i32 + 20);
+
                 if is_moving {
                     // 移動中: 最後の座標変化から 200ms 完全に静止したら定常状態とみなす (debounce)
                     if last_move_time.elapsed() >= Duration::from_millis(200) {
-                        // 静止確定: 落ち着いた新位置へテレポートさせてから上品にフェードイン
                         overlay.set_position(overlay_x, overlay_y);
-                        overlay.fade_in();
                         is_moving = false;
+                        if !is_mouse_near {
+                            overlay.fade_in();
+                        }
                     }
+                } else if is_mouse_near {
+                    // マウスが HUD の近くまたは上にある -> 背後UI操作の邪魔にならないよう完全に消す
+                    overlay.fade_out();
+                } else {
+                    // 通常時 (静止中かつマウスが離れている) -> フェードイン表示
+                    overlay.fade_in();
                 }
             } else {
                 if !is_moving {
