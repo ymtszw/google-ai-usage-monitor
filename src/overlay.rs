@@ -328,13 +328,13 @@ fn render_tachometer(
     let sweep_deg = 250.0;
     let track_width = 4.2;
 
-    // 1. メーター上部ラベル (メーター円弧との明確な空間を確保: 23px, 10.2px)
+    // 1. メーター上部ラベル (メーター円弧との明確な空間を確保: 24px, 11.0px に1段階拡大)
     draw_text(
         pixmap,
         label,
         cx,
         cy - radius - 24.0,
-        10.2,
+        11.0,
         Color::from_rgba8(225, 232, 245, 250), // 鮮明な高コントラストオフホワイト
         true,
         Weight::MEDIUM,
@@ -431,13 +431,13 @@ fn render_tachometer(
         );
     }
 
-    // 6. パーセント値 (くっきりと力強い太字 13.0px)
+    // 6. パーセント値 (元の落ち着いたサイズ 11.5px, 力強い太字)
     draw_text(
         pixmap,
         val_text,
         cx,
-        cy + 7.5,
-        13.0,
+        cy + 7.0,
+        11.5,
         theme_color,
         true,
         Weight::BOLD,
@@ -511,14 +511,14 @@ fn render_hud(pixmap: &mut Pixmap) {
     let meter_r = 19.5;
 
     // ==========================================
-    // 上段: GEMINI MODELS (中央見出し + 適切な余白, 11.2px)
+    // 上段: GEMINI MODELS (中央見出し + 適切な余白, 12.0px に1段階拡大)
     // ==========================================
     draw_text(
         pixmap,
         "GEMINI MODELS",
         w / 2.0,
         12.0,
-        11.2,
+        12.0,
         Color::from_rgba8(96, 165, 250, 255), // 高視認性 Google Blue (#60a5fa)
         true,
         Weight::SEMIBOLD,
@@ -568,14 +568,14 @@ fn render_hud(pixmap: &mut Pixmap) {
     }
 
     // ==========================================
-    // 下段: CLAUDE & GPT (中央見出し + 適切な余白, 11.2px)
+    // 下段: CLAUDE & GPT (中央見出し + 適切な余白, 12.0px に1段階拡大)
     // ==========================================
     draw_text(
         pixmap,
         "CLAUDE & GPT",
         w / 2.0,
         126.0,
-        11.2,
+        12.0,
         Color::from_rgba8(251, 191, 36, 255), // 高視認性 Warm Amber (#fbbf24)
         true,
         Weight::SEMIBOLD,
