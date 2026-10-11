@@ -1,6 +1,8 @@
 mod overlay;
 mod quota;
+mod startup;
 mod tracker;
+mod tray;
 
 use overlay::{GaugeData, TachometerOverlay};
 use quota::fetch_quota;
@@ -14,8 +16,24 @@ use windows::Win32::UI::WindowsAndMessaging::{
 fn format_reset_time(iso_str: Option<&str>) -> Option<String> {
     let s = iso_str?;
     let utc_dt = chrono::DateTime::parse_from_rfc3339(s).ok()?;
-    let local_dt: chrono::DateTime<chrono::Local> = chrono::DateTime::from(utc_dt);
-    Some(local_dt.format("%m/%d %H:%M").to_string())
+    let now = chrono::Utc::now();
+    let duration = utc_dt.signed_duration_since(now);
+
+    if duration.num_seconds() <= 0 {
+        return Some("Reset: Ready".to_string());
+    }
+
+    let total_mins = duration.num_minutes();
+    let hours = total_mins / 60;
+    let mins = total_mins % 60;
+
+    if hours < 24 {
+        Some(format!("Reset in: {:02}:{:02}", hours, mins))
+    } else {
+        let days = hours / 24;
+        let rem_hours = hours % 24;
+        Some(format!("Reset in: {}d {}h", days, rem_hours))
+    }
 }
 
 fn extract_group_quota(group: Option<&quota::GroupInfo>) -> overlay::GroupQuota {
@@ -66,6 +84,46 @@ fn extract_all_gauge_data() -> Option<GaugeData> {
 }
 
 fn main() {
+    // CLI 引数のチェック (スタートアップ登録・解除)
+    let args: Vec<String> = std::env::args().collect();
+    if args.len() > 1 {
+        match args[1].as_str() {
+            "--register-startup" => {
+                match startup::set_startup_enabled(true) {
+                    Ok(()) => println!(" [OK] Windows 起動時の自動起動を登録しました。"),
+                    Err(e) => eprintln!(" [ERROR] 登録失敗: {}", e),
+                }
+                return;
+            }
+            "--unregister-startup" => {
+                match startup::set_startup_enabled(false) {
+                    Ok(()) => println!(" [OK] Windows 起動時の自動起動を解除しました。"),
+                    Err(e) => eprintln!(" [ERROR] 解除失敗: {}", e),
+                }
+                return;
+            }
+            "--status-startup" => {
+                println!(
+                    " スタートアップ登録状態: {}",
+                    if startup::is_startup_enabled() {
+                        "有効 (Enabled)"
+                    } else {
+                        "無効 (Disabled)"
+                    }
+                );
+                return;
+            }
+            "--help" | "-h" => {
+                println!("使用法: google-ai-usage-monitor [オプション]");
+                println!("  --register-startup    Windows 起動時の自動起動を有効化");
+                println!("  --unregister-startup  Windows 起動時の自動起動を無効化");
+                println!("  --status-startup      現在の自動起動設定状態を表示");
+                return;
+            }
+            _ => {}
+        }
+    }
+
     println!("============================================================");
     println!(" Antigravity Quota HUD (Rust Native Tachometer Overlay)");
     println!("============================================================");
@@ -81,6 +139,10 @@ fn main() {
             return;
         }
     };
+
+    // 2. システムトレイアイコンの登録
+    let mut tray = tray::TrayIcon::new(overlay.hwnd);
+    println!(" [OK] システムトレイアイコンを登録しました。");
 
     println!(" Antigravity ウィンドウを検索・追従中...\n");
 
@@ -110,59 +172,70 @@ fn main() {
                     data.claude_gpt.weekly_pct,
                     data.claude_gpt.five_h_pct
                 );
-                overlay.update_data(data);
+                overlay.update_data(data.clone());
+                tray.update(&data.gemini, &data.claude_gpt);
             }
             last_fetch = Instant::now();
         }
 
+        let hud_user_visible = tray::TrayIcon::is_hud_visible();
+
         // Antigravity ウィンドウの探索・追従
-        if let Some(target) = find_antigravity_window() {
-            if let Some(bounds) = get_target_bounds(target) {
-                // Antigravity GUI の右下に配置 (右マージン 24px, 下マージン 32px)
-                let overlay_x = bounds.right - overlay::HUD_WIDTH as i32 - 24;
-                let overlay_y = bounds.bottom - overlay::HUD_HEIGHT as i32 - 32;
+        if hud_user_visible {
+            if let Some(target) = find_antigravity_window() {
+                if let Some(bounds) = get_target_bounds(target) {
+                    // Antigravity GUI の右下に配置 (右マージン 24px, 下マージン 32px)
+                    let overlay_x = bounds.right - overlay::HUD_WIDTH as i32 - 24;
+                    let overlay_y = bounds.bottom - overlay::HUD_HEIGHT as i32 - 32;
 
-                if let Some(prev) = last_bounds {
-                    if prev != bounds {
-                        // 移動またはリサイズ検知 -> 即座にフェードアウトを開始し、移動完了まで待機
-                        if !is_moving {
-                            overlay.fade_out();
-                            is_moving = true;
+                    if let Some(prev) = last_bounds {
+                        if prev != bounds {
+                            // 移動またはリサイズ検知 -> 即座にフェードアウトを開始し、移動完了まで待機
+                            if !is_moving {
+                                overlay.fade_out();
+                                is_moving = true;
+                            }
+                            last_move_time = Instant::now();
                         }
-                        last_move_time = Instant::now();
-                    }
-                } else {
-                    // 初回検知時: 新位置へ配置してフェードイン
-                    overlay.set_position(overlay_x, overlay_y);
-                    overlay.fade_in();
-                }
-
-                last_bounds = Some(bounds);
-
-                // マウスカーソルが HUD の上または近傍（外側 +20px）にあるか検知
-                let mut cursor_pt = POINT::default();
-                let _ = unsafe { GetCursorPos(&mut cursor_pt) };
-
-                let is_mouse_near = cursor_pt.x >= (overlay_x - 20)
-                    && cursor_pt.x <= (overlay_x + overlay::HUD_WIDTH as i32 + 20)
-                    && cursor_pt.y >= (overlay_y - 20)
-                    && cursor_pt.y <= (overlay_y + overlay::HUD_HEIGHT as i32 + 20);
-
-                if is_moving {
-                    // 移動中: 最後の座標変化から 200ms 完全に静止したら定常状態とみなす (debounce)
-                    if last_move_time.elapsed() >= Duration::from_millis(200) {
+                    } else {
+                        // 初回検知時: 新位置へ配置してフェードイン
                         overlay.set_position(overlay_x, overlay_y);
-                        is_moving = false;
-                        if !is_mouse_near {
-                            overlay.fade_in();
-                        }
+                        overlay.fade_in();
                     }
-                } else if is_mouse_near {
-                    // マウスが HUD の近くまたは上にある -> 背後UI操作の邪魔にならないよう完全に消す
-                    overlay.fade_out();
+
+                    last_bounds = Some(bounds);
+
+                    // マウスカーソルが HUD の上または近傍（外側 +20px）にあるか検知
+                    let mut cursor_pt = POINT::default();
+                    let _ = unsafe { GetCursorPos(&mut cursor_pt) };
+
+                    let is_mouse_near = cursor_pt.x >= (overlay_x - 20)
+                        && cursor_pt.x <= (overlay_x + overlay::HUD_WIDTH as i32 + 20)
+                        && cursor_pt.y >= (overlay_y - 20)
+                        && cursor_pt.y <= (overlay_y + overlay::HUD_HEIGHT as i32 + 20);
+
+                    if is_moving {
+                        // 移動中: 最後の座標変化から 200ms 完全に静止したら定常状態とみなす (debounce)
+                        if last_move_time.elapsed() >= Duration::from_millis(200) {
+                            overlay.set_position(overlay_x, overlay_y);
+                            is_moving = false;
+                            if !is_mouse_near {
+                                overlay.fade_in();
+                            }
+                        }
+                    } else if is_mouse_near {
+                        // マウスが HUD の近くまたは上にある -> 背後UI操作の邪魔にならないよう完全に消す
+                        overlay.fade_out();
+                    } else {
+                        // 通常時 (静止中かつマウスが離れている) -> フェードイン表示
+                        overlay.fade_in();
+                    }
                 } else {
-                    // 通常時 (静止中かつマウスが離れている) -> フェードイン表示
-                    overlay.fade_in();
+                    if !is_moving {
+                        overlay.fade_out();
+                        is_moving = true;
+                    }
+                    last_bounds = None;
                 }
             } else {
                 if !is_moving {
@@ -172,11 +245,8 @@ fn main() {
                 last_bounds = None;
             }
         } else {
-            if !is_moving {
-                overlay.fade_out();
-                is_moving = true;
-            }
-            last_bounds = None;
+            // トレイメニューで「HUD を非表示」に設定中
+            overlay.fade_out();
         }
 
         std::thread::sleep(Duration::from_millis(16)); // 60fps (16ms) 追従

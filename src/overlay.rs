@@ -201,6 +201,7 @@ unsafe extern "system" fn wnd_proc(
             }
             LRESULT(0)
         }
+        crate::tray::WM_TRAYICON => unsafe { crate::tray::handle_tray_message(hwnd, lparam) },
         _ => unsafe { DefWindowProcW(hwnd, msg, wparam, lparam) },
     }
 }
@@ -830,14 +831,14 @@ mod tests {
             gemini: GroupQuota {
                 weekly_pct: 78.0,
                 five_h_pct: 100.0,
-                weekly_reset: Some("10/17 21:32".to_string()),
-                five_h_reset: Some("10/11 21:27".to_string()),
+                weekly_reset: Some("Reset in: 5d 14h".to_string()),
+                five_h_reset: Some("Reset in: 03:24".to_string()),
             },
             claude_gpt: GroupQuota {
                 weekly_pct: 42.0,
                 five_h_pct: 15.0,
-                weekly_reset: Some("10/17 21:32".to_string()),
-                five_h_reset: Some("10/11 18:45".to_string()),
+                weekly_reset: Some("Reset in: 5d 14h".to_string()),
+                five_h_reset: Some("Reset in: 01:18".to_string()),
             },
         };
 
