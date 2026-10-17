@@ -74,16 +74,18 @@ For GUI and visual work, follow the workspace skills:
 
 ### Rendering the HUD to a PNG
 
-`overlay::tests::test_render_hud_with_reset_timestamps` renders the HUD with sample data to `target/hud_rendered.png`. Use it to check visuals without a live window.
+`overlay::tests::test_render_hud_with_reset_timestamps` renders `render_hud(&mut pixmap)` offscreen with sample data directly to `target/hud_rendered.png`. Agents can run `cargo test test_render_hud_with_reset_timestamps` and inspect `target/hud_rendered.png` via `view_file` without needing a live window or an external `cargo watch` terminal.
 
-To update the README screenshot (`docs/hud.png`), render it **without** the DEV badge. That means a release-profile test binary run outside of cargo (cargo sets the `CARGO` env var, which counts as dev mode):
+To update the README screenshot (`docs/hud.png`), render it **without** the DEV badge. That means running a release-profile test binary directly outside of cargo (since cargo sets `CARGO` / `CARGO_MANIFEST_DIR`, which triggers dev mode):
 
 ```powershell
 $t = cargo test --release --no-run --message-format=json 2>$null | ConvertFrom-Json |
   Where-Object { $_.executable -and $_.profile.test } | Select-Object -First 1
-& $t.executable test_render_hud_with_reset_timestamps
+& $t.executable test_render_hud_with_reset_timestamps | Out-Default
 Copy-Item target\hud_rendered.png docs\hud.png -Force
 ```
+
+> **Note:** Release binaries use `#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]`. In PowerShell, invoking a `windows` subsystem `.exe` with `&` returns immediately (asynchronously) unless its output is piped. Always pipe to `| Out-Default` (or `| Out-Null`) so PowerShell waits for `target/hud_rendered.png` to finish writing before `Copy-Item` runs.
 
 ## Design rules
 

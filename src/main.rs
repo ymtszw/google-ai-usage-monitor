@@ -70,18 +70,24 @@ fn extract_group_quota(group: Option<&quota::GroupInfo>) -> overlay::GroupQuota 
 fn extract_all_gauge_data() -> Option<GaugeData> {
     let quota = fetch_quota().ok()?;
 
-    let gemini_group = quota
+    let gemini_group = quota.groups.iter().find(|g| {
+        let name = g.display_name.to_lowercase();
+        name.contains("gemini") && !name.contains("argon")
+    });
+
+    let argon_group = quota
         .groups
         .iter()
-        .find(|g| g.display_name.to_lowercase().contains("gemini"));
+        .find(|g| g.display_name.to_lowercase().contains("argon"));
 
     let claude_gpt_group = quota.groups.iter().find(|g| {
-        g.display_name.to_lowercase().contains("claude")
-            || g.display_name.to_lowercase().contains("gpt")
+        let name = g.display_name.to_lowercase();
+        name.contains("claude") || name.contains("gpt")
     });
 
     Some(GaugeData {
         gemini: extract_group_quota(gemini_group),
+        argon: extract_group_quota(argon_group),
         claude_gpt: extract_group_quota(claude_gpt_group),
     })
 }
@@ -196,14 +202,15 @@ fn main() {
             REFRESH_REQUESTED.store(false, std::sync::atomic::Ordering::SeqCst);
             if let Some(data) = extract_all_gauge_data() {
                 println!(
-                    " [Quota Update] Gemini (W: {:.1}%, 5h: {:.1}%) | Claude/GPT (W: {:.1}%, 5h: {:.1}%)",
+                    " [Quota Update] Gemini (W: {:.1}%, 5h: {:.1}%, Argon W: {:.1}%) | Claude/GPT (W: {:.1}%, 5h: {:.1}%)",
                     data.gemini.weekly_pct,
                     data.gemini.five_h_pct,
+                    data.argon.weekly_pct,
                     data.claude_gpt.weekly_pct,
                     data.claude_gpt.five_h_pct
                 );
                 overlay.update_data(data.clone());
-                tray.update(&data.gemini, &data.claude_gpt);
+                tray.update(&data.gemini, &data.argon, &data.claude_gpt);
             }
             last_fetch = Instant::now();
         }
