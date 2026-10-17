@@ -17,7 +17,7 @@ use windows::Win32::UI::WindowsAndMessaging::{
 };
 use windows::core::w;
 
-pub const HUD_WIDTH: u32 = 220;
+pub const HUD_WIDTH: u32 = 312;
 pub const HUD_HEIGHT: u32 = 240;
 
 /// 無次元量スケールに基づくデザインシステム・トークン (gui-dimensionless-design スキル準拠)
@@ -104,6 +104,7 @@ pub struct GroupQuota {
 #[derive(Debug, Clone)]
 pub struct GaugeData {
     pub gemini: GroupQuota,
+    pub argon: GroupQuota,
     pub claude_gpt: GroupQuota,
 }
 
@@ -111,6 +112,12 @@ impl Default for GaugeData {
     fn default() -> Self {
         Self {
             gemini: GroupQuota {
+                weekly_pct: 100.0,
+                five_h_pct: 100.0,
+                weekly_reset: None,
+                five_h_reset: None,
+            },
+            argon: GroupQuota {
                 weekly_pct: 100.0,
                 five_h_pct: 100.0,
                 weekly_reset: None,
@@ -606,9 +613,16 @@ fn render_hud(pixmap: &mut Pixmap) {
         );
     }
 
-    // メーターの X 座標: HUD 幅 220px に対してトークン基準で配置 (left=64px, right=156px)
-    let left_cx = tokens.base_space * 8.0;
-    let right_cx = tokens.base_space * 19.5;
+    // メーターの X 座標: HUD 幅 312px (base_space * 39.0) に対して中央 (w / 2.0) 対称で配置
+    let col_gap = tokens.base_space * 11.5; // 92.0px
+    let top_left_cx = (w / 2.0) - col_gap; // 64.0px
+    let top_mid_cx = w / 2.0; // 156.0px
+    let top_right_cx = (w / 2.0) + col_gap; // 248.0px
+
+    let bottom_half_gap = tokens.base_space * 6.5; // 52.0px (間隔 104.0px)
+    let bottom_left_cx = (w / 2.0) - bottom_half_gap; // 104.0px
+    let bottom_right_cx = (w / 2.0) + bottom_half_gap; // 208.0px
+
     let meter_r = tokens.base_space * 2.4375; // 19.5px
 
     // ==========================================
@@ -631,7 +645,7 @@ fn render_hud(pixmap: &mut Pixmap) {
     if runtime_mode.is_dev() {
         let badge_w = tokens.base_space * 3.25; // 26.0px
         let badge_h = tokens.base_space * 1.5; // 12.0px
-        let badge_x = w - tokens.space_lg() - badge_w; // 182.0px
+        let badge_x = w - tokens.space_lg() - badge_w;
         let badge_y = top_heading_y;
         let badge_r = tokens.space_xs(); // 2.0px
 
@@ -693,7 +707,7 @@ fn render_hud(pixmap: &mut Pixmap) {
     render_tachometer(
         pixmap,
         &tokens,
-        left_cx,
+        top_left_cx,
         top_meter_cy,
         meter_r,
         data.gemini.weekly_pct,
@@ -708,7 +722,7 @@ fn render_hud(pixmap: &mut Pixmap) {
     render_tachometer(
         pixmap,
         &tokens,
-        right_cx,
+        top_mid_cx,
         top_meter_cy,
         meter_r,
         data.gemini.five_h_pct,
@@ -716,6 +730,21 @@ fn render_hud(pixmap: &mut Pixmap) {
         &gem_5h_val,
         gem_5h_color,
         data.gemini.five_h_reset.as_deref(),
+    );
+
+    let argon_weekly_color = get_quota_color(data.argon.weekly_pct);
+    let argon_weekly_val = format!("{:.0}%", data.argon.weekly_pct);
+    render_tachometer(
+        pixmap,
+        &tokens,
+        top_right_cx,
+        top_meter_cy,
+        meter_r,
+        data.argon.weekly_pct,
+        "Argon Weekly",
+        &argon_weekly_val,
+        argon_weekly_color,
+        data.argon.weekly_reset.as_deref(),
     );
 
     // ==========================================
@@ -758,7 +787,7 @@ fn render_hud(pixmap: &mut Pixmap) {
     render_tachometer(
         pixmap,
         &tokens,
-        left_cx,
+        bottom_left_cx,
         bottom_meter_cy,
         meter_r,
         data.claude_gpt.weekly_pct,
@@ -773,7 +802,7 @@ fn render_hud(pixmap: &mut Pixmap) {
     render_tachometer(
         pixmap,
         &tokens,
-        right_cx,
+        bottom_right_cx,
         bottom_meter_cy,
         meter_r,
         data.claude_gpt.five_h_pct,
@@ -926,6 +955,12 @@ mod tests {
                 five_h_pct: 100.0,
                 weekly_reset: Some("Reset in: 5d 14h".to_string()),
                 five_h_reset: Some("Reset in: 03:24".to_string()),
+            },
+            argon: GroupQuota {
+                weekly_pct: 97.0,
+                five_h_pct: 100.0,
+                weekly_reset: Some("Reset in: 6d 08h".to_string()),
+                five_h_reset: None,
             },
             claude_gpt: GroupQuota {
                 weekly_pct: 42.0,

@@ -241,7 +241,7 @@ impl TrayIcon {
         }
     }
 
-    pub fn update(&mut self, gemini: &GroupQuota, claude: &GroupQuota) {
+    pub fn update(&mut self, gemini: &GroupQuota, argon: &GroupQuota, claude: &GroupQuota) {
         let hicon = generate_tray_hicon(gemini.five_h_pct);
         if let Some(old) = self.current_icon.replace(hicon.unwrap_or_default()) {
             unsafe {
@@ -252,8 +252,13 @@ impl TrayIcon {
         let mode = crate::runtime::RuntimeMode::detect();
         let mode_tag = if mode.is_dev() { " [DEV]" } else { "" };
         let tip_str = format!(
-            "Google AI Usage Monitor{}\nGemini 5h: {:.0}% | W: {:.0}%\nClaude 5h: {:.0}% | W: {:.0}%",
-            mode_tag, gemini.five_h_pct, gemini.weekly_pct, claude.five_h_pct, claude.weekly_pct
+            "Google AI Usage Monitor{}\nGemini 5h: {:.0}% | W: {:.0}% | Argon: {:.0}%\nClaude 5h: {:.0}% | W: {:.0}%",
+            mode_tag,
+            gemini.five_h_pct,
+            gemini.weekly_pct,
+            argon.weekly_pct,
+            claude.five_h_pct,
+            claude.weekly_pct
         );
         let tip = to_u16_slice_128(&tip_str);
 

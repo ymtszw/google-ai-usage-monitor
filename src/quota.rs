@@ -305,12 +305,17 @@ mod tests {
             let has_gemini = quota
                 .groups
                 .iter()
-                .any(|g| g.display_name.contains("Gemini"));
+                .any(|g| g.display_name.contains("Gemini") && !g.display_name.contains("Argon"));
+            let has_argon = quota
+                .groups
+                .iter()
+                .any(|g| g.display_name.contains("Argon"));
             let has_claude = quota
                 .groups
                 .iter()
                 .any(|g| g.display_name.contains("Claude") || g.display_name.contains("GPT"));
             assert!(has_gemini, "Should contain Gemini quota group");
+            assert!(has_argon, "Should contain Argon quota group");
             assert!(has_claude, "Should contain Claude/GPT quota group");
         }
     }

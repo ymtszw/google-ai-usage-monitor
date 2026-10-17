@@ -1,9 +1,9 @@
 # Google AI Usage Monitor
 
-A tiny native Windows HUD that shows your **Google Antigravity** AI quota (Gemini / Claude & GPT — Weekly and 5-Hour limits) right on top of the Antigravity window.
+A tiny native Windows HUD that shows your **Google Antigravity** AI quota (Gemini / Gemini 4 Argon / Claude & GPT — Weekly and 5-Hour limits) right on top of the Antigravity window.
 
 <p align="center">
-  <img src="docs/hud.png" alt="HUD overlay showing Gemini and Claude & GPT quota gauges" width="220">
+  <img src="docs/hud.png" alt="HUD overlay showing Gemini, Argon, and Claude & GPT quota gauges" width="312">
 </p>
 
 > [!NOTE]
@@ -11,11 +11,11 @@ A tiny native Windows HUD that shows your **Google Antigravity** AI quota (Gemin
 
 ## Features
 
-- **Quota gauges at a glance** — Weekly Limit and 5-Hour Burst for both *Gemini Models* and *Claude & GPT*, color-coded by remaining quota.
+- **Quota gauges at a glance** — Weekly Limit, 5-Hour Burst, and Argon Weekly for *Gemini Models*, plus Weekly Limit and 5-Hour Burst for *Claude & GPT*, color-coded by remaining quota.
 - **Relative reset times** — e.g. `Reset in: 03:24` or `Reset in: 5d 14h`.
 - **Sticks to Antigravity** — follows the bottom-right corner of the Antigravity window, hides while the window is moved/resized or minimized.
 - **Never in your way** — fully click-through, and fades out automatically when the mouse cursor gets near it.
-- **System tray icon** — shows the Gemini 5-Hour remaining % as a live ring icon. The tooltip shows all four values.
+- **System tray icon** — shows the Gemini 5-Hour remaining % as a live ring icon. The tooltip shows all five values.
   - Left click: show / hide the HUD
   - Right click: menu (show/hide HUD, start with Windows, restart, exit)
 - **Fresh data when you look** — quota refreshes every 5 minutes, and also immediately when you click the tray icon or when the HUD reappears.

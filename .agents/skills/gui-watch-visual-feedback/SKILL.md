@@ -12,15 +12,16 @@ description: >-
 
 This skill defines the autonomous feedback loop procedure for developing and refining Desktop/GUI applications using hot-reload / watch mode and autonomous visual inspection.
 
-## 1. Prerequisites & Environment Setup
+## 1. Two Modes of Visual Capture
 
-1. **Watch Mode in External Shell**:
-   - The user or external shell runs the target application in watch/hot-reload mode (e.g., `cargo watch -x run` for Rust projects).
-   - Whenever source code is edited and saved, the process is automatically recompiled and restarted.
+1. **Headless Offscreen Render Test (Preferred for Agent Autonomy)**:
+   - Run a unit test that invokes the offscreen renderer (`render_hud(&mut pixmap)`) and saves the output to `target/hud_rendered.png` (e.g., `cargo test test_render_hud_with_reset_timestamps`).
+   - Requires **no external terminal** and **no live window**, completing deterministically in a single command.
+   - When running a release-profile test binary on Windows (`windows_subsystem = "windows"`) outside `cargo` to omit the `DEV` badge, pipe the executable call to `| Out-Default` in PowerShell so PowerShell waits synchronously for the GUI-subsystem process to finish writing the PNG before copying or viewing it.
 
-2. **Offscreen / Render Snapshot Capability**:
-   - The GUI engine or overlay should support saving its rendered pixmap/frame to a known scratch path (e.g., `<scratch_dir>/hud_rendered.png` or an OS screenshot).
-   - This ensures 100% deterministic, high-resolution visual capture regardless of window layering, transparency (`WS_EX_LAYERED`), or session isolation.
+2. **Live Watch Mode in External Shell (Optional for Live Window Tracking)**:
+   - When testing live window tracking or real-time desktop behavior, an external shell can run `cargo watch -x run`.
+   - Whenever source code is edited and saved, the live process is automatically recompiled and restarted.
 
 ## 2. The Autonomous Iteration Cycle
 
@@ -30,10 +31,10 @@ When tasked with adjusting layout, typography, margins, padding, colors, or visu
 [ Code Edit & Save ]
         │
         ▼
-[ Watch Recompile & Auto-Restart ]
-        │  (Wait ~1000-1500ms for recompilation & initial render)
+[ Run Offscreen Render Test (or Watch Auto-Restart) ]
+        │  e.g. `cargo test test_render_hud_with_reset_timestamps`
         ▼
-[ Frame Snapshot Generated ]
+[ Frame Snapshot Generated (`target/hud_rendered.png`) ]
         │
         ▼
 [ view_file on Snapshot PNG ]
