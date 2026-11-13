@@ -48,6 +48,15 @@ cargo build --release
 > [!TIP]
 > Development and testing use the `stable-x86_64-pc-windows-gnu` toolchain. See [AGENTS.md](AGENTS.md) for the full setup.
 
+## CLI Options
+
+```powershell
+google-ai-usage-monitor --dump-json           # dump current quota summary as formatted JSON
+google-ai-usage-monitor --register-startup    # enable start with Windows
+google-ai-usage-monitor --unregister-startup  # disable start with Windows
+google-ai-usage-monitor --status-startup      # show current auto-start status
+```
+
 ## Start with Windows
 
 Right-click the tray icon and check **Windows 起動時に自動起動** (start with Windows). Or from a terminal:
@@ -81,7 +90,7 @@ Everything stays on your machine. The tool sends no requests to the internet its
 
 ## Contributing
 
-Development setup, quality checks, architecture notes, and design guidelines are in [AGENTS.md](AGENTS.md).
+Development setup, quality checks, and design guidelines are in [AGENTS.md](AGENTS.md). Detailed technical architecture is documented in [ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
 ## License
 

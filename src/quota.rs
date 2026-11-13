@@ -72,8 +72,7 @@ pub struct QuotaResponse {
     pub description: Option<String>,
 }
 
-#[allow(dead_code)]
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AntigravityQuota {
     pub process_id: u32,
     pub port: u16,
@@ -235,6 +234,32 @@ pub fn get_listening_ports_for_pid(target_pid: u32) -> Vec<u16> {
     ports
 }
 
+/// 指定ポートおよび CSRF トークンに対して Quota エンドポイントへ POST 要求を送信
+pub fn query_quota_endpoint(port: u16, csrf: &str) -> Result<QuotaResponseWrapper, String> {
+    let client = reqwest::blocking::Client::builder()
+        .timeout(Duration::from_secs(2))
+        .build()
+        .map_err(|e| e.to_string())?;
+
+    let url = format!(
+        "http://127.0.0.1:{}/exa.language_server_pb.LanguageServerService/RetrieveUserQuotaSummary",
+        port
+    );
+
+    let resp = client
+        .post(&url)
+        .header("Content-Type", "application/json")
+        .header("X-Codeium-Csrf-Token", csrf)
+        .body("{}")
+        .send()
+        .map_err(|e| format!("HTTP request failed: {}", e))?;
+
+    resp.error_for_status()
+        .map_err(|e| format!("HTTP status error: {}", e))?
+        .json::<QuotaResponseWrapper>()
+        .map_err(|e| format!("JSON parse error: {}", e))
+}
+
 /// Antigravity ローカル API に接続してクォータを取得
 pub fn fetch_quota() -> Result<AntigravityQuota, String> {
     let (pid, csrf) = find_language_server_info()
@@ -248,29 +273,8 @@ pub fn fetch_quota() -> Result<AntigravityQuota, String> {
         ));
     }
 
-    let client = reqwest::blocking::Client::builder()
-        .timeout(Duration::from_secs(2))
-        .build()
-        .map_err(|e| e.to_string())?;
-
     for port in ports {
-        let url = format!(
-            "http://127.0.0.1:{}/exa.language_server_pb.LanguageServerService/RetrieveUserQuotaSummary",
-            port
-        );
-
-        let res = client
-            .post(&url)
-            .header("Content-Type", "application/json")
-            .header("X-Codeium-Csrf-Token", &csrf)
-            .body("{}")
-            .send();
-
-        if let Ok(resp) = res
-            && let Ok(wrapper) = resp
-                .error_for_status()
-                .and_then(|r| r.json::<QuotaResponseWrapper>())
-        {
+        if let Ok(wrapper) = query_quota_endpoint(port, &csrf) {
             return Ok(AntigravityQuota {
                 process_id: pid,
                 port,

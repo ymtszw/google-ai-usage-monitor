@@ -308,6 +308,10 @@ fn to_wide_str(s: &str) -> Vec<u16> {
 }
 
 /// トレイアイコンのメッセージ処理（右クリックメニュー・クリック等）
+///
+/// # Safety
+///
+/// `hwnd` は有効なトップレベルウィンドウの HWND である必要があります。
 pub unsafe fn handle_tray_message(hwnd: HWND, lparam: LPARAM) -> LRESULT {
     let msg = (lparam.0 & 0xffff) as u32;
 

@@ -1,16 +1,13 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
-mod overlay;
-mod quota;
-mod runtime;
-mod startup;
-mod tracker;
-mod tray;
-
-use overlay::{GaugeData, TachometerOverlay};
-use quota::fetch_quota;
+use google_ai_usage_monitor::overlay::{self, GaugeData, TachometerOverlay};
+use google_ai_usage_monitor::quota::{self, fetch_quota};
+use google_ai_usage_monitor::tracker::{find_antigravity_window, get_target_bounds};
+use google_ai_usage_monitor::{
+    clear_refresh_request, cli_export, is_refresh_requested, request_refresh, runtime, startup,
+    tray,
+};
 use std::time::{Duration, Instant};
-use tracker::{find_antigravity_window, get_target_bounds};
 use windows::Win32::Foundation::POINT;
 use windows::Win32::UI::WindowsAndMessaging::{
     DispatchMessageW, GetCursorPos, MSG, PM_REMOVE, PeekMessageW, TranslateMessage,
@@ -92,13 +89,6 @@ fn extract_all_gauge_data() -> Option<GaugeData> {
     })
 }
 
-static REFRESH_REQUESTED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
-
-/// トレイクリックや状態変化時にクォータ更新を即時要求
-pub fn request_refresh() {
-    REFRESH_REQUESTED.store(true, std::sync::atomic::Ordering::SeqCst);
-}
-
 fn main() {
     // CLI 引数のチェック (スタートアップ登録・解除)
     let args: Vec<String> = std::env::args().collect();
@@ -136,8 +126,18 @@ fn main() {
                 );
                 return;
             }
+            "--dump-json" => {
+                if let Err(e) = cli_export::run_dump_json() {
+                    eprintln!(" [ERROR] クォータの JSON ダンプに失敗しました: {}", e);
+                    std::process::exit(1);
+                }
+                return;
+            }
             "--help" | "-h" => {
                 println!("使用法: google-ai-usage-monitor [オプション]");
+                println!(
+                    "  --dump-json           現在取得したクォータ情報を整形JSONとして標準出力へ即時ダンプ"
+                );
                 println!("  --register-startup    Windows 起動時の自動起動を有効化");
                 println!("  --unregister-startup  Windows 起動時の自動起動を無効化");
                 println!("  --status-startup      現在の自動起動設定状態を表示");
@@ -195,11 +195,10 @@ fn main() {
         // 1. 定期5分経過
         // 2. トレイクリックまたは非表示->表示遷移による明示的更新要求 (最短3秒デバウンス)
         let is_periodic = last_fetch.elapsed() >= Duration::from_secs(300);
-        let is_requested = REFRESH_REQUESTED.load(std::sync::atomic::Ordering::SeqCst)
-            && last_fetch.elapsed() >= Duration::from_secs(3);
+        let is_requested = is_refresh_requested() && last_fetch.elapsed() >= Duration::from_secs(3);
 
         if is_periodic || is_requested {
-            REFRESH_REQUESTED.store(false, std::sync::atomic::Ordering::SeqCst);
+            clear_refresh_request();
             if let Some(data) = extract_all_gauge_data() {
                 println!(
                     " [Quota Update] Gemini (W: {:.1}%, 5h: {:.1}%, Argon/Orch W: {:.1}%) | Claude/GPT (W: {:.1}%, 5h: {:.1}%)",

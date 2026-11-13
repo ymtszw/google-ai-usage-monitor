@@ -1,7 +1,7 @@
 # AGENTS.md
 
 Instructions for coding agents and contributors working on this repository.
-User-facing docs live in [README.md](README.md). Keep README focused on end users and put development details here.
+User-facing docs live in [README.md](README.md). Technical architecture deep-dive is documented in [ARCHITECTURE.md](docs/ARCHITECTURE.md). Keep README focused on end users and put development details here.
 
 ## Project overview
 
@@ -10,12 +10,14 @@ A native Win32 HUD overlay (Rust) that shows Google Antigravity quota on top of 
 | Module | Role |
 |---|---|
 | `src/main.rs` | Entry point, CLI flags (`--register-startup` etc.), main loop (message pump + window tracking + quota refresh) |
+| `src/cli_export.rs` | One-shot CLI subcommands (`--dump-json`) for formatting and exporting quota JSON to stdout |
 | `src/quota.rs` | Finds `language_server.exe`, reads the CSRF token from its PEB command line, finds its listening port, calls `RetrieveUserQuotaSummary` |
 | `src/tracker.rs` | Finds the `Antigravity.exe` main window (HWND) and its bounds |
 | `src/overlay.rs` | Layered HUD window, `tiny-skia` + `cosmic-text` rendering, dimensionless `DesignTokens`, fade animation |
 | `src/tray.rs` | System tray icon (dynamic Gemini 5h ring), tooltip, context menu, restart/exit |
 | `src/startup.rs` | Auto-start via `HKCU\...\CurrentVersion\Run` |
 | `src/runtime.rs` | Distinguishes `cargo run` / debug binary / release binary |
+| `tests/mock_server.rs` | Local TCP mock server emulating `language_server.exe` RPC endpoint for deterministic tests |
 
 ### Key behaviors
 
