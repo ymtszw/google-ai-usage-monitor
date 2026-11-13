@@ -741,7 +741,7 @@ fn render_hud(pixmap: &mut Pixmap) {
         top_meter_cy,
         meter_r,
         data.argon.weekly_pct,
-        "Argon Weekly",
+        "Argon / Orch",
         &argon_weekly_val,
         argon_weekly_color,
         data.argon.weekly_reset.as_deref(),

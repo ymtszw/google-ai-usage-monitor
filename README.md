@@ -1,6 +1,6 @@
 # Google AI Usage Monitor
 
-A tiny native Windows HUD that shows your **Google Antigravity** AI quota (Gemini / Gemini 4 Argon / Claude & GPT — Weekly and 5-Hour limits) right on top of the Antigravity window.
+A tiny native Windows HUD that shows your **Google Antigravity** AI quota (Gemini / Argon & Orchestrator / Claude & GPT — Weekly and 5-Hour limits) right on top of the Antigravity window.
 
 <p align="center">
   <img src="docs/hud.png" alt="HUD overlay showing Gemini, Argon, and Claude & GPT quota gauges" width="312">
@@ -11,7 +11,7 @@ A tiny native Windows HUD that shows your **Google Antigravity** AI quota (Gemin
 
 ## Features
 
-- **Quota gauges at a glance** — Weekly Limit, 5-Hour Burst, and Argon Weekly for *Gemini Models*, plus Weekly Limit and 5-Hour Burst for *Claude & GPT*, color-coded by remaining quota.
+- **Quota gauges at a glance** — Weekly Limit, 5-Hour Burst, and Argon / Orch for *Gemini Models*, plus Weekly Limit and 5-Hour Burst for *Claude & GPT*, color-coded by remaining quota.
 - **Relative reset times** — e.g. `Reset in: 03:24` or `Reset in: 5d 14h`.
 - **Sticks to Antigravity** — follows the bottom-right corner of the Antigravity window, hides while the window is moved/resized or minimized.
 - **Never in your way** — fully click-through, and fades out automatically when the mouse cursor gets near it.

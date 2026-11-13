@@ -202,7 +202,7 @@ fn main() {
             REFRESH_REQUESTED.store(false, std::sync::atomic::Ordering::SeqCst);
             if let Some(data) = extract_all_gauge_data() {
                 println!(
-                    " [Quota Update] Gemini (W: {:.1}%, 5h: {:.1}%, Argon W: {:.1}%) | Claude/GPT (W: {:.1}%, 5h: {:.1}%)",
+                    " [Quota Update] Gemini (W: {:.1}%, 5h: {:.1}%, Argon/Orch W: {:.1}%) | Claude/GPT (W: {:.1}%, 5h: {:.1}%)",
                     data.gemini.weekly_pct,
                     data.gemini.five_h_pct,
                     data.argon.weekly_pct,

@@ -252,7 +252,7 @@ impl TrayIcon {
         let mode = crate::runtime::RuntimeMode::detect();
         let mode_tag = if mode.is_dev() { " [DEV]" } else { "" };
         let tip_str = format!(
-            "Google AI Usage Monitor{}\nGemini 5h: {:.0}% | W: {:.0}% | Argon: {:.0}%\nClaude 5h: {:.0}% | W: {:.0}%",
+            "Google AI Usage Monitor{}\nGemini 5h: {:.0}% | W: {:.0}% | Argon/Orch: {:.0}%\nClaude 5h: {:.0}% | W: {:.0}%",
             mode_tag,
             gemini.five_h_pct,
             gemini.weekly_pct,
