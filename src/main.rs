@@ -4,8 +4,8 @@ use google_ai_usage_monitor::overlay::{self, GaugeData, TachometerOverlay};
 use google_ai_usage_monitor::quota::{self, fetch_quota};
 use google_ai_usage_monitor::tracker::{find_antigravity_window, get_target_bounds};
 use google_ai_usage_monitor::{
-    clear_refresh_request, cli_export, is_refresh_requested, request_refresh, runtime, startup,
-    tray,
+    clear_refresh_request, cli_export, cli_status, is_refresh_requested, request_refresh, runtime,
+    startup, tray,
 };
 use std::time::{Duration, Instant};
 use windows::Win32::Foundation::POINT;
@@ -133,10 +133,19 @@ fn main() {
                 }
                 return;
             }
+            "--status" => {
+                if cli_status::run_status().is_err() {
+                    std::process::exit(1);
+                }
+                return;
+            }
             "--help" | "-h" => {
                 println!("使用法: google-ai-usage-monitor [オプション]");
                 println!(
                     "  --dump-json           現在取得したクォータ情報を整形JSONとして標準出力へ即時ダンプ"
+                );
+                println!(
+                    "  --status              language_server.exe の接続・CSRF・ポート健全性診断を表示"
                 );
                 println!("  --register-startup    Windows 起動時の自動起動を有効化");
                 println!("  --unregister-startup  Windows 起動時の自動起動を無効化");

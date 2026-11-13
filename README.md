@@ -51,6 +51,7 @@ cargo build --release
 ## CLI Options
 
 ```powershell
+google-ai-usage-monitor --status              # inspect language_server health and connectivity
 google-ai-usage-monitor --dump-json           # dump current quota summary as formatted JSON
 google-ai-usage-monitor --register-startup    # enable start with Windows
 google-ai-usage-monitor --unregister-startup  # disable start with Windows

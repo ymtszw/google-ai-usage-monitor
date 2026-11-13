@@ -241,3 +241,34 @@ fn test_mock_language_server_custom_payload() {
     assert_eq!(quota.response.groups[0].display_name, "Custom Test Model");
     assert_eq!(quota.response.groups[0].buckets[0].remaining_fraction, 1.0);
 }
+
+#[test]
+fn test_cli_status_with_mock_server() {
+    let csrf_token = "status-mock-csrf-token";
+    let server = MockLanguageServer::start(Some(csrf_token.to_string()), None)
+        .expect("Failed to start mock server");
+
+    let info = google_ai_usage_monitor::cli_status::ServerDiagnosticInfo {
+        pids: vec![99999],
+        selected_pid: Some(99999),
+        csrf_token: Some(csrf_token.to_string()),
+        ports: vec![server.port()],
+        endpoint_result: query_quota_endpoint(server.port(), csrf_token)
+            .map(|w| w.response.groups.len()),
+    };
+
+    let report = google_ai_usage_monitor::cli_status::evaluate_diagnostics(&info);
+    assert_eq!(
+        report.overall,
+        google_ai_usage_monitor::cli_status::HealthStatus::Ok
+    );
+    assert!(
+        report
+            .items
+            .iter()
+            .all(|i| i.status == google_ai_usage_monitor::cli_status::HealthStatus::Ok)
+    );
+    let cli_output = report.format_cli();
+    assert!(cli_output.contains("HEALTHY"));
+    assert!(cli_output.contains(&server.port().to_string()));
+}

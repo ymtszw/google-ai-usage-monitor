@@ -151,12 +151,23 @@ pub fn get_process_command_line(pid: u32) -> Option<String> {
     }
 }
 
-/// language_server.exe の PID と CSRF トークンを検索
-pub fn find_language_server_info() -> Option<(u32, String)> {
+/// コマンドライン文字列から CSRF トークンを抽出
+pub fn extract_csrf_token(cmd_line: &str) -> Option<String> {
     let re_csrf = regex::Regex::new(r"--csrf_token\s+([a-zA-Z0-9\-]+)").ok()?;
+    re_csrf
+        .captures(cmd_line)
+        .and_then(|caps| caps.get(1))
+        .map(|m| m.as_str().to_string())
+}
 
+/// 稼働中のすべての language_server.exe の PID を列挙
+pub fn find_all_language_server_pids() -> Vec<u32> {
+    let mut pids = Vec::new();
     unsafe {
-        let snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0).ok()?;
+        let snapshot = match CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0) {
+            Ok(s) => s,
+            Err(_) => return pids,
+        };
         let mut entry = std::mem::zeroed::<PROCESSENTRY32W>();
         entry.dwSize = std::mem::size_of::<PROCESSENTRY32W>() as u32;
 
@@ -167,13 +178,7 @@ pub fn find_language_server_info() -> Option<(u32, String)> {
                     .to_string();
 
                 if name.eq_ignore_ascii_case("language_server.exe") {
-                    let pid = entry.th32ProcessID;
-                    if let Some(cmd) = get_process_command_line(pid)
-                        && let Some(csrf) = re_csrf.captures(&cmd).and_then(|caps| caps.get(1))
-                    {
-                        let _ = CloseHandle(snapshot);
-                        return Some((pid, csrf.as_str().to_string()));
-                    }
+                    pids.push(entry.th32ProcessID);
                 }
 
                 if Process32NextW(snapshot, &mut entry).is_err() {
@@ -182,6 +187,18 @@ pub fn find_language_server_info() -> Option<(u32, String)> {
             }
         }
         let _ = CloseHandle(snapshot);
+    }
+    pids
+}
+
+/// language_server.exe の PID と CSRF トークンを検索
+pub fn find_language_server_info() -> Option<(u32, String)> {
+    for pid in find_all_language_server_pids() {
+        if let Some(cmd) = get_process_command_line(pid)
+            && let Some(csrf) = extract_csrf_token(&cmd)
+        {
+            return Some((pid, csrf));
+        }
     }
     None
 }

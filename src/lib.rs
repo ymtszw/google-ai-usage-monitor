@@ -1,4 +1,6 @@
 pub mod cli_export;
+pub mod cli_status;
+pub mod history_logger;
 pub mod overlay;
 pub mod quota;
 pub mod runtime;
