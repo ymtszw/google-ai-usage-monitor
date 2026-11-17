@@ -21,6 +21,8 @@ pub const WM_TRAYICON: u32 = windows::Win32::UI::WindowsAndMessaging::WM_USER + 
 
 const IDM_HEADER: usize = 1001;
 const IDM_TOGGLE_HUD: usize = 1002;
+const IDM_MODE_OVERLAY: usize = 1006;
+const IDM_MODE_TASKBAR: usize = 1007;
 const IDM_STARTUP: usize = 1003;
 const IDM_RESTART: usize = 1004;
 const IDM_EXIT: usize = 1005;
@@ -30,6 +32,8 @@ static HUD_VISIBLE: AtomicBool = AtomicBool::new(true);
 pub struct TrayIcon {
     hwnd: HWND,
     current_icon: Option<HICON>,
+    last_tip: String,
+    visible: bool,
 }
 
 fn to_u16_slice_128(s: &str) -> [u16; 128] {
@@ -211,6 +215,8 @@ impl TrayIcon {
         let mut tray = Self {
             hwnd,
             current_icon: None,
+            last_tip: String::new(),
+            visible: false,
         };
         tray.init_tray();
         tray
@@ -222,23 +228,41 @@ impl TrayIcon {
 
         let mode = crate::runtime::RuntimeMode::detect();
         let mode_tag = if mode.is_dev() { " [DEV]" } else { "" };
-        let tip_str = format!("Google AI Usage Monitor{}\nGemini: 100%", mode_tag);
-        let tip = to_u16_slice_128(&tip_str);
+        self.last_tip = format!("Google AI Usage Monitor{}\nGemini: 100%", mode_tag);
+        self.set_visible(true);
+    }
 
-        let nid = NOTIFYICONDATAW {
-            cbSize: std::mem::size_of::<NOTIFYICONDATAW>() as u32,
-            hWnd: self.hwnd,
-            uID: 1,
-            uFlags: NIF_ICON | NIF_MESSAGE | NIF_TIP,
-            uCallbackMessage: WM_TRAYICON,
-            hIcon: self.current_icon.unwrap_or_default(),
-            szTip: tip,
-            ..Default::default()
-        };
-
-        unsafe {
-            let _ = Shell_NotifyIconW(NIM_ADD, &nid);
+    pub fn set_visible(&mut self, show: bool) {
+        if self.visible == show {
+            return;
         }
+        if show {
+            let tip = to_u16_slice_128(&self.last_tip);
+            let nid = NOTIFYICONDATAW {
+                cbSize: std::mem::size_of::<NOTIFYICONDATAW>() as u32,
+                hWnd: self.hwnd,
+                uID: 1,
+                uFlags: NIF_ICON | NIF_MESSAGE | NIF_TIP,
+                uCallbackMessage: WM_TRAYICON,
+                hIcon: self.current_icon.unwrap_or_default(),
+                szTip: tip,
+                ..Default::default()
+            };
+            unsafe {
+                let _ = Shell_NotifyIconW(NIM_ADD, &nid);
+            }
+        } else {
+            let nid = NOTIFYICONDATAW {
+                cbSize: std::mem::size_of::<NOTIFYICONDATAW>() as u32,
+                hWnd: self.hwnd,
+                uID: 1,
+                ..Default::default()
+            };
+            unsafe {
+                let _ = Shell_NotifyIconW(NIM_DELETE, &nid);
+            }
+        }
+        self.visible = show;
     }
 
     pub fn update(&mut self, gemini: &GroupQuota, argon: &GroupQuota, claude: &GroupQuota) {
@@ -251,7 +275,7 @@ impl TrayIcon {
 
         let mode = crate::runtime::RuntimeMode::detect();
         let mode_tag = if mode.is_dev() { " [DEV]" } else { "" };
-        let tip_str = format!(
+        self.last_tip = format!(
             "Google AI Usage Monitor{}\nGemini 5h: {:.0}% | W: {:.0}% | Argon/Orch: {:.0}%\nClaude 5h: {:.0}% | W: {:.0}%",
             mode_tag,
             gemini.five_h_pct,
@@ -260,7 +284,10 @@ impl TrayIcon {
             claude.five_h_pct,
             claude.weekly_pct
         );
-        let tip = to_u16_slice_128(&tip_str);
+        if !self.visible {
+            return;
+        }
+        let tip = to_u16_slice_128(&self.last_tip);
 
         let nid = NOTIFYICONDATAW {
             cbSize: std::mem::size_of::<NOTIFYICONDATAW>() as u32,
@@ -288,14 +315,18 @@ impl TrayIcon {
 
 impl Drop for TrayIcon {
     fn drop(&mut self) {
-        let nid = NOTIFYICONDATAW {
-            cbSize: std::mem::size_of::<NOTIFYICONDATAW>() as u32,
-            hWnd: self.hwnd,
-            uID: 1,
-            ..Default::default()
-        };
+        if self.visible {
+            let nid = NOTIFYICONDATAW {
+                cbSize: std::mem::size_of::<NOTIFYICONDATAW>() as u32,
+                hWnd: self.hwnd,
+                uID: 1,
+                ..Default::default()
+            };
+            unsafe {
+                let _ = Shell_NotifyIconW(NIM_DELETE, &nid);
+            }
+        }
         unsafe {
-            let _ = Shell_NotifyIconW(NIM_DELETE, &nid);
             if let Some(icon) = self.current_icon.take() {
                 let _ = DestroyIcon(icon);
             }
@@ -326,7 +357,6 @@ pub unsafe fn handle_tray_message(hwnd: HWND, lparam: LPARAM) -> LRESULT {
         }
         windows::Win32::UI::WindowsAndMessaging::WM_LBUTTONUP => {
             crate::request_refresh();
-            TrayIcon::toggle_hud();
             LRESULT(0)
         }
         _ => LRESULT(0),
@@ -364,9 +394,9 @@ unsafe fn show_tray_menu(hwnd: HWND) {
         // 2. HUD 表示 / 非表示
         let is_visible = TrayIcon::is_hud_visible();
         let toggle_label = if is_visible {
-            to_wide_str("HUD を非表示にする")
+            to_wide_str("表示を隠す (Hide)")
         } else {
-            to_wide_str("HUD を表示する")
+            to_wide_str("表示する (Show)")
         };
         let _ = AppendMenuW(
             hmenu,
@@ -374,6 +404,35 @@ unsafe fn show_tray_menu(hwnd: HWND) {
             IDM_TOGGLE_HUD,
             PCWSTR(toggle_label.as_ptr()),
         );
+
+        // 2.5 表示モード切替 (オーバーレイ / タスクバー)
+        let current_mode = crate::display_mode::get_display_mode();
+        let overlay_flag = if current_mode == crate::display_mode::DisplayMode::Overlay {
+            MF_CHECKED
+        } else {
+            MF_UNCHECKED
+        };
+        let taskbar_flag = if current_mode == crate::display_mode::DisplayMode::Taskbar {
+            MF_CHECKED
+        } else {
+            MF_UNCHECKED
+        };
+        let _ = AppendMenuW(hmenu, MF_SEPARATOR, 0, PCWSTR::null());
+        let mode_overlay_str = to_wide_str("表示モード: オーバーレイ (Overlay)");
+        let _ = AppendMenuW(
+            hmenu,
+            MF_STRING | overlay_flag,
+            IDM_MODE_OVERLAY,
+            PCWSTR(mode_overlay_str.as_ptr()),
+        );
+        let mode_taskbar_str = to_wide_str("表示モード: タスクバー (Taskbar)");
+        let _ = AppendMenuW(
+            hmenu,
+            MF_STRING | taskbar_flag,
+            IDM_MODE_TASKBAR,
+            PCWSTR(mode_taskbar_str.as_ptr()),
+        );
+        let _ = AppendMenuW(hmenu, MF_SEPARATOR, 0, PCWSTR::null());
 
         // 3. スタートアップ登録 (チェックマーク付き)
         let is_autostart = startup::is_startup_enabled();
@@ -417,6 +476,12 @@ unsafe fn show_tray_menu(hwnd: HWND) {
         match cmd.0 as usize {
             IDM_TOGGLE_HUD => {
                 TrayIcon::toggle_hud();
+            }
+            IDM_MODE_OVERLAY => {
+                crate::display_mode::set_display_mode(crate::display_mode::DisplayMode::Overlay);
+            }
+            IDM_MODE_TASKBAR => {
+                crate::display_mode::set_display_mode(crate::display_mode::DisplayMode::Taskbar);
             }
             IDM_STARTUP => {
                 let current = startup::is_startup_enabled();

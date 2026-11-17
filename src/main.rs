@@ -1,7 +1,9 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+use google_ai_usage_monitor::display_mode::{self, DisplayMode};
 use google_ai_usage_monitor::overlay::{self, GaugeData, TachometerOverlay};
 use google_ai_usage_monitor::quota::{self, fetch_quota};
+use google_ai_usage_monitor::taskbar::TaskbarWidget;
 use google_ai_usage_monitor::tracker::{find_antigravity_window, get_target_bounds};
 use google_ai_usage_monitor::{
     clear_refresh_request, cli_export, cli_status, is_refresh_requested, request_refresh, runtime,
@@ -141,16 +143,25 @@ fn main() {
             }
             "--help" | "-h" => {
                 println!("使用法: google-ai-usage-monitor [オプション]");
+                println!("  --mode <overlay|taskbar>  表示モードを指定して起動 (設定を保存)");
                 println!(
-                    "  --dump-json           現在取得したクォータ情報を整形JSONとして標準出力へ即時ダンプ"
+                    "  --dump-json               現在取得したクォータ情報を整形JSONとして標準出力へ即時ダンプ"
                 );
                 println!(
-                    "  --status              language_server.exe の接続・CSRF・ポート健全性診断を表示"
+                    "  --status                  language_server.exe の接続・CSRF・ポート健全性診断を表示"
                 );
-                println!("  --register-startup    Windows 起動時の自動起動を有効化");
-                println!("  --unregister-startup  Windows 起動時の自動起動を無効化");
-                println!("  --status-startup      現在の自動起動設定状態を表示");
+                println!("  --register-startup        Windows 起動時の自動起動を有効化");
+                println!("  --unregister-startup      Windows 起動時の自動起動を無効化");
+                println!("  --status-startup          現在の自動起動設定状態を表示");
                 return;
+            }
+            "--mode" => {
+                if let Some(m) = args.get(2).and_then(|s| DisplayMode::parse(s)) {
+                    display_mode::set_display_mode(m);
+                } else {
+                    eprintln!(" [ERROR] --mode には overlay または taskbar を指定してください。");
+                    std::process::exit(1);
+                }
             }
             _ => {}
         }
@@ -178,6 +189,14 @@ fn main() {
     let mut tray = tray::TrayIcon::new(overlay.hwnd);
     println!(" [OK] システムトレイアイコンを登録しました。");
 
+    // 3. タスクバーウィジェットの初期化
+    let mut taskbar = TaskbarWidget::new(overlay.hwnd);
+    let mut active_mode = display_mode::get_display_mode();
+    if active_mode == DisplayMode::Taskbar {
+        taskbar.set_visible(true);
+        tray.set_visible(false);
+    }
+
     println!(" Antigravity ウィンドウを検索・追従中...\n");
 
     let mut last_fetch = Instant::now() - Duration::from_secs(300);
@@ -185,6 +204,7 @@ fn main() {
     let mut last_move_time = Instant::now() - Duration::from_secs(10);
     let mut is_moving = false;
     let mut was_hud_shown = false;
+    let mut last_taskbar_tick = Instant::now();
 
     // メッセージループ & 追従ループ
     loop {
@@ -218,6 +238,7 @@ fn main() {
                     data.claude_gpt.five_h_pct
                 );
                 overlay.update_data(data.clone());
+                taskbar.update_data(data.clone());
                 tray.update(&data.gemini, &data.argon, &data.claude_gpt);
             }
             last_fetch = Instant::now();
@@ -225,9 +246,37 @@ fn main() {
 
         let mut is_hud_shown = false;
         let hud_user_visible = tray::TrayIcon::is_hud_visible();
+        let current_mode = display_mode::get_display_mode();
 
-        // Antigravity ウィンドウの探索・追従
-        if hud_user_visible {
+        if current_mode != active_mode {
+            match current_mode {
+                DisplayMode::Taskbar => {
+                    overlay.fade_out();
+                    last_bounds = None;
+                    is_moving = false;
+                    taskbar.set_visible(hud_user_visible);
+                }
+                DisplayMode::Overlay => {
+                    taskbar.set_visible(false);
+                }
+            }
+            active_mode = current_mode;
+        }
+
+        // タスクバーモードで表示中のみトレイアイコンを隠し、非表示時・他モード時は表示する
+        let should_show_tray = !(active_mode == DisplayMode::Taskbar && hud_user_visible);
+        tray.set_visible(should_show_tray);
+
+        if active_mode == DisplayMode::Taskbar {
+            taskbar.set_visible(hud_user_visible);
+            if hud_user_visible {
+                is_hud_shown = true;
+                if last_taskbar_tick.elapsed() >= Duration::from_millis(80) {
+                    taskbar.tick();
+                    last_taskbar_tick = Instant::now();
+                }
+            }
+        } else if hud_user_visible {
             if let Some(target) = find_antigravity_window() {
                 if let Some(bounds) = get_target_bounds(target) {
                     // Antigravity GUI の右下に配置 (右マージン 24px, 下マージン 32px)

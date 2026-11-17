@@ -321,9 +321,92 @@ fn render_to_surface(hwnd: HWND, alpha: u8) {
     });
 }
 
+/// フォントシステムが初期化済みであることを保証
+pub(crate) fn ensure_font_system() {
+    let mut lock = FONT_SYSTEM.lock().unwrap();
+    if lock.is_none() {
+        let font_system = FontSystem::new();
+        let cache = SwashCache::new();
+        *lock = Some((font_system, cache));
+    }
+}
+
+/// 任意のサイズの Pixmap を指定の Layered Window へ転送 (タスクバー等で使用)
+#[allow(clippy::chunks_exact_to_as_chunks)]
+pub(crate) fn push_pixmap_to_layered_window(hwnd: HWND, pixmap: &Pixmap, alpha: u8) {
+    let w = pixmap.width() as i32;
+    let h = pixmap.height() as i32;
+    if w <= 0 || h <= 0 {
+        return;
+    }
+
+    unsafe {
+        let screen_dc = GetDC(None);
+        let mem_dc = CreateCompatibleDC(Some(screen_dc));
+
+        let bmi = BITMAPINFO {
+            bmiHeader: BITMAPINFOHEADER {
+                biSize: std::mem::size_of::<BITMAPINFOHEADER>() as u32,
+                biWidth: w,
+                biHeight: -h, // トップダウン
+                biPlanes: 1,
+                biBitCount: 32,
+                biCompression: BI_RGB.0,
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+
+        let mut bits: *mut std::ffi::c_void = std::ptr::null_mut();
+        if let Ok(hbitmap) =
+            CreateDIBSection(Some(mem_dc), &bmi, DIB_RGB_COLORS, &mut bits, None, 0)
+        {
+            let old_bmp = SelectObject(mem_dc, HGDIOBJ(hbitmap.0));
+            let src_slice = pixmap.data();
+            let dst_slice = std::slice::from_raw_parts_mut(bits as *mut u8, (w * h * 4) as usize);
+
+            for (src_chunk, dst_chunk) in
+                src_slice.chunks_exact(4).zip(dst_slice.chunks_exact_mut(4))
+            {
+                dst_chunk[0] = src_chunk[2]; // B
+                dst_chunk[1] = src_chunk[1]; // G
+                dst_chunk[2] = src_chunk[0]; // R
+                dst_chunk[3] = src_chunk[3]; // A
+            }
+
+            let pt_src = POINT { x: 0, y: 0 };
+            let size_wnd = SIZE { cx: w, cy: h };
+            let blend = BLENDFUNCTION {
+                BlendOp: 0, // AC_SRC_OVER
+                BlendFlags: 0,
+                SourceConstantAlpha: alpha,
+                AlphaFormat: 1, // AC_SRC_ALPHA
+            };
+
+            let _ = UpdateLayeredWindow(
+                hwnd,
+                Some(screen_dc),
+                None,
+                Some(&size_wnd),
+                Some(mem_dc),
+                Some(&pt_src),
+                windows::Win32::Foundation::COLORREF(0),
+                Some(&blend),
+                ULW_ALPHA,
+            );
+
+            SelectObject(mem_dc, old_bmp);
+            let _ = DeleteObject(HGDIOBJ(hbitmap.0));
+        }
+
+        let _ = DeleteDC(mem_dc);
+        let _ = ReleaseDC(None, screen_dc);
+    }
+}
+
 /// 高品位テキスト描画ヘルパー
 #[allow(clippy::too_many_arguments)]
-fn draw_text(
+pub(crate) fn draw_text(
     pixmap: &mut Pixmap,
     text: &str,
     x: f32,
@@ -353,6 +436,9 @@ fn draw_text(
     let g_u8 = (color.green() * 255.0) as u8;
     let b_u8 = (color.blue() * 255.0) as u8;
 
+    let pw = pixmap.width() as i32;
+    let ph = pixmap.height() as i32;
+
     buffer.draw(
         cache,
         CColor::rgba(r_u8, g_u8, b_u8, alpha_u8),
@@ -360,8 +446,8 @@ fn draw_text(
             let px = (offset_x + gx as f32).round() as i32;
             let py = (y + gy as f32).round() as i32;
 
-            if px >= 0 && px < HUD_WIDTH as i32 && py >= 0 && py < HUD_HEIGHT as i32 {
-                let idx = (py as usize * HUD_WIDTH as usize + px as usize) * 4;
+            if px >= 0 && px < pw && py >= 0 && py < ph {
+                let idx = (py as usize * pw as usize + px as usize) * 4;
                 let data = pixmap.data_mut();
 
                 let a = col.a() as f32 / 255.0;
@@ -382,7 +468,13 @@ fn draw_text(
     );
 }
 
-fn make_arc_path(cx: f32, cy: f32, radius: f32, start_deg: f32, sweep_deg: f32) -> Option<Path> {
+pub(crate) fn make_arc_path(
+    cx: f32,
+    cy: f32,
+    radius: f32,
+    start_deg: f32,
+    sweep_deg: f32,
+) -> Option<Path> {
     let mut pb = PathBuilder::new();
     let steps = (sweep_deg.abs() / 2.0).ceil().max(2.0) as usize;
 
@@ -551,7 +643,7 @@ fn render_tachometer(
     }
 }
 
-fn get_quota_color(pct: f64) -> Color {
+pub(crate) fn get_quota_color(pct: f64) -> Color {
     if pct > 50.0 {
         Color::from_rgba8(52, 211, 153, 255) // 高視認性エメラルドグリーン (#34d399)
     } else if pct > 20.0 {
