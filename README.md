@@ -5,6 +5,9 @@ A tiny native Windows HUD that shows your **Google Antigravity** AI quota (Gemin
 <p align="center">
   <img src="docs/hud.png" alt="HUD overlay showing Gemini, Argon, and Claude & GPT quota gauges" width="312">
 </p>
+<p align="center">
+  <img src="docs/taskbar.png" alt="Taskbar mode strip showing compact Gemini, Argon, and Claude quota rings" width="294">
+</p>
 
 > [!NOTE]
 > This is an unofficial, community-made tool. It is not affiliated with or endorsed by Google.
@@ -13,11 +16,12 @@ A tiny native Windows HUD that shows your **Google Antigravity** AI quota (Gemin
 
 - **Quota gauges at a glance** — Weekly Limit, 5-Hour Burst, and Argon / Orch for *Gemini Models*, plus Weekly Limit and 5-Hour Burst for *Claude & GPT*, color-coded by remaining quota.
 - **Relative reset times** — e.g. `Reset in: 03:24` or `Reset in: 5d 14h`.
-- **Sticks to Antigravity** — follows the bottom-right corner of the Antigravity window, hides while the window is moved/resized or minimized.
-- **Never in your way** — fully click-through, and fades out automatically when the mouse cursor gets near it.
-- **System tray icon** — shows the Gemini 5-Hour remaining % as a live ring icon. The tooltip shows all five values.
-  - Left click: show / hide the HUD
-  - Right click: menu (show/hide HUD, start with Windows, restart, exit)
+- **Two Display Modes (Overlay / Taskbar)** — switch anytime from the context menu or `--mode`:
+  - **Overlay Mode**: sticks to the bottom-right corner of the Antigravity window, click-through, hides while moving/minimized or when the mouse cursor gets near it.
+  - **Taskbar Mode**: docks as a compact horizontal strip next to the Windows taskbar notification area (ideal for large displays). Left- or right-clicking the strip opens the context menu, and hovering shows full reset times.
+- **System tray icon** — shows the Gemini 5-Hour remaining % as a live ring icon with all five values in its tooltip. Automatically hides while Taskbar mode is visible to avoid duplication, and reappears when hidden or in Overlay mode.
+  - Left click: refresh quota immediately
+  - Right click: menu (show/hide, switch display mode, start with Windows, restart, exit)
 - **Fresh data when you look** — quota refreshes every 5 minutes, and also immediately when you click the tray icon or when the HUD reappears.
 - **Lightweight** — a single native Rust binary (Win32 + software vector rendering). No console window, no Electron, no WebView.
 
@@ -51,6 +55,8 @@ cargo build --release
 ## CLI Options
 
 ```powershell
+google-ai-usage-monitor --mode overlay        # start in Overlay mode (persisted)
+google-ai-usage-monitor --mode taskbar        # start in Taskbar mode (persisted)
 google-ai-usage-monitor --status              # inspect language_server health and connectivity
 google-ai-usage-monitor --dump-json           # dump current quota summary as formatted JSON
 google-ai-usage-monitor --register-startup    # enable start with Windows
