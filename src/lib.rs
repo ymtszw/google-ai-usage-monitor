@@ -1,10 +1,12 @@
 pub mod cli_export;
 pub mod cli_status;
+pub mod display_mode;
 pub mod history_logger;
 pub mod overlay;
 pub mod quota;
 pub mod runtime;
 pub mod startup;
+pub mod taskbar;
 pub mod tracker;
 pub mod tray;
 
